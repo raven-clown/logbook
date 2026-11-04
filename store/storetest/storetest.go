@@ -226,7 +226,13 @@ func findByHash(t *testing.T, s memory.Store) {
 	gone := newMemory("mem_gone", "user:alice", "gone")
 	gone.ContentHash = "h2"
 	gone.Status = memory.StatusForgotten
-	insert(t, s, live, gone)
+	old := newMemory("mem_old", "user:alice", "old")
+	old.ContentHash = "h3"
+	old.Status = memory.StatusSuperseded
+	insert(t, s, live, gone, old)
+	if _, err := s.FindByHash(ctx, memory.DefaultOrg, "user:alice", "h3"); !errors.Is(err, memory.ErrNotFound) {
+		t.Fatalf("FindByHash(superseded) err = %v, want only active memories", err)
+	}
 
 	got, err := s.FindByHash(ctx, memory.DefaultOrg, "user:alice", "h1")
 	if err != nil || got.ID != live.ID {

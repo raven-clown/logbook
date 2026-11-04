@@ -77,6 +77,9 @@ func (s *Service) Remember(ctx context.Context, p Principal, r RememberRequest) 
 	var out Remembered
 	err = s.store.Tx(ctx, func(st Store) error {
 		if dup, err := st.FindByHash(ctx, p.OrgID, m.Scope, hash); err == nil {
+			if dup.ID == r.Corrects {
+				return Errorf(CodeInvalidArgument, "corrects", "the correction has the same content as memory %s", dup.ID)
+			}
 			out = Remembered{ID: dup.ID, Scope: dup.Scope, Status: dup.Status, Duplicate: true}
 			return nil
 		} else if CodeOf(err) != CodeNotFound {

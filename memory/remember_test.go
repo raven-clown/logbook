@@ -223,3 +223,31 @@ func TestRememberMetadataLimits(t *testing.T) {
 	f := newFixture(t)
 	f.remember(t, alice, memory.RememberRequest{Content: "at the limits", Subject: strings.Repeat("s", 200), Tags: many(32, "t"), Refs: many(32, "r")})
 }
+
+func TestRememberRevertsACorrection(t *testing.T) {
+	f := newFixture(t)
+	p := inProject(alice, "p")
+	a := f.remember(t, p, memory.RememberRequest{Content: "deploys go through Jenkins"})
+	b := f.remember(t, p, memory.RememberRequest{Content: "deploys go through GitHub Actions", Corrects: a.ID})
+	c := f.remember(t, p, memory.RememberRequest{Content: "deploys go through Jenkins", Corrects: b.ID})
+	if c.Duplicate || c.ID == a.ID {
+		t.Fatalf("revert was treated as a duplicate: %+v", c)
+	}
+	if got := f.get(t, b.ID).Status; got != memory.StatusSuperseded {
+		t.Fatalf("reverted memory status = %s", got)
+	}
+	got := f.recall(t, p, memory.RecallRequest{Query: "deploys"})
+	if len(got) != 1 || got[0].ID != c.ID {
+		t.Fatalf("recall after revert = %v", resultIDs(got))
+	}
+}
+
+func TestRememberCorrectionWithSameContent(t *testing.T) {
+	f := newFixture(t)
+	a := f.remember(t, alice, memory.RememberRequest{Content: "Use pnpm"})
+	_, err := f.svc.Remember(background, alice, memory.RememberRequest{Content: "use  PNPM", Corrects: a.ID})
+	wantCode(t, err, memory.CodeInvalidArgument, "corrects")
+	if got := f.get(t, a.ID).Status; got != memory.StatusUnverified {
+		t.Fatalf("target status = %s", got)
+	}
+}

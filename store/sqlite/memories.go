@@ -134,10 +134,10 @@ func (s *Store) Get(ctx context.Context, orgID, id string) (*memory.Memory, erro
 	return m, notFound(err)
 }
 
-// FindByHash returns the non-forgotten memory with this content hash in scope.
+// FindByHash returns the active memory with this content hash in scope.
 func (s *Store) FindByHash(ctx context.Context, orgID, scope, hash string) (*memory.Memory, error) {
 	row := s.q.QueryRowContext(ctx, "SELECT "+columns+` FROM memories m
-		WHERE m.org_id = ? AND m.scope = ? AND m.content_hash = ? AND m.status != 'forgotten'
+		WHERE m.org_id = ? AND m.scope = ? AND m.content_hash = ? AND m.status IN ('unverified', 'verified', 'disputed')
 		ORDER BY m.created_at LIMIT 1`, orgID, scope, hash)
 	m, err := scanMemory(row)
 	return m, notFound(err)

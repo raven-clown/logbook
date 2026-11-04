@@ -46,7 +46,7 @@ type Store interface {
 	// m.Version. A mismatch returns ErrVersionConflict.
 	Update(ctx context.Context, m *Memory) error
 	Get(ctx context.Context, orgID, id string) (*Memory, error)
-	// FindByHash returns the non-forgotten memory with this content hash in scope.
+	// FindByHash returns the active memory with this content hash in scope.
 	FindByHash(ctx context.Context, orgID, scope, hash string) (*Memory, error)
 	// FindBySubject returns the active memories with this subject in scope.
 	FindBySubject(ctx context.Context, orgID, scope, subject string) ([]*Memory, error)
