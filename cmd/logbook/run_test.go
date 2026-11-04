@@ -245,3 +245,20 @@ func TestRunMCP(t *testing.T) {
 		t.Fatal("mcp did not exit after stdin closed")
 	}
 }
+
+func TestRunEscapesTerminalControls(t *testing.T) {
+	c := newCLI(t)
+	c.ok("remember", "colour \x1b[31mred\x1b[0m and \u202egnp.exe and a bell\a")
+	out := c.ok("recall", "colour")
+	for _, bad := range []string{"\x1b", "\u202e", "\a"} {
+		if strings.Contains(out, bad) {
+			t.Fatalf("recall printed a raw control character %q: %q", bad, out)
+		}
+	}
+	if !strings.Contains(out, `\x1b[31mred`) || !strings.Contains(out, `\u202e`) {
+		t.Fatalf("control characters should be shown escaped: %q", out)
+	}
+	if code, _, errOut := c.run("verify", "mem_\x1b[2J", "confirm"); code != 1 || strings.Contains(errOut, "\x1b") {
+		t.Fatalf("error output carried a raw escape: %q", errOut)
+	}
+}

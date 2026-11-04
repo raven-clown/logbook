@@ -71,7 +71,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		_, _ = fmt.Fprintf(stderr, "%s\n", ue.msg)
 		return 2
 	default:
-		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "error: %s\n", safe(err.Error()))
 		return 1
 	}
 }
