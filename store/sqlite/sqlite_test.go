@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/raven-clown/logbook/memory"
 	"github.com/raven-clown/logbook/store"
@@ -111,5 +112,27 @@ func TestConcurrentFirstOpen(t *testing.T) {
 				t.Fatalf("round %d: %v", round, err)
 			}
 		}
+	}
+}
+
+func TestTxRollsBackOnPanic(t *testing.T) {
+	s := openTemp(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	func() {
+		defer func() { _ = recover() }()
+		_ = s.Tx(ctx, func(tx memory.Store) error {
+			if err := tx.Insert(ctx, &memory.Memory{ID: "mem_p", OrgID: memory.DefaultOrg, Scope: "user:alice", Content: "inside", Kind: memory.KindFact, Status: memory.StatusUnverified, Source: memory.SourceDirect, ContentHash: "hp", Version: 1}); err != nil {
+				t.Fatal(err)
+			}
+			panic("handler bug")
+		})
+	}()
+	m := &memory.Memory{ID: "mem_after", OrgID: memory.DefaultOrg, Scope: "user:alice", Content: "after", Kind: memory.KindFact, Status: memory.StatusUnverified, Source: memory.SourceDirect, ContentHash: "ha", Version: 1}
+	if err := s.Insert(ctx, m); err != nil {
+		t.Fatalf("write after a panicking transaction: %v", err)
+	}
+	if _, err := s.Get(ctx, memory.DefaultOrg, "mem_p"); err == nil {
+		t.Fatal("the panicking transaction was committed")
 	}
 }

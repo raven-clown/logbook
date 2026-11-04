@@ -87,8 +87,8 @@ func (s *Store) Tx(ctx context.Context, fn func(memory.Store) error) error {
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(&Store{db: s.db, q: tx, inTx: true}); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {
