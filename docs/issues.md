@@ -2,7 +2,7 @@
 
 The first milestone from [design.md](design.md) section 10: the memory model, trust states, corrections, staleness, SQLite with migrations, MCP over stdio and the CLI. At the end of it, `logbook mcp` works in any MCP client with no server and no model.
 
-Issues marked `claimed` are being built by the maintainer now. The `good first issue` and `help wanted` ones are open for anyone. Where an issue depends on another, it says so, so nobody starts on an interface that is not there yet.
+Posted on GitHub as #1 to #16 under the [Core milestone](https://github.com/raven-clown/logbook/milestone/1), with the same numbers as below. Issues marked `claimed` are being built by the maintainer now. The `good first issue` and `help wanted` ones are open for anyone. Where an issue depends on another, it says so, so nobody starts on an interface that is not there yet.
 
 ---
 
