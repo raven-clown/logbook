@@ -273,12 +273,44 @@ func (s *Service) attachLinks(ctx context.Context, p Principal, results []Recall
 	if err != nil {
 		return err
 	}
+	visible := map[string]bool{}
+	for _, r := range results {
+		visible[r.ID] = true
+	}
 	for i := range results {
 		for _, e := range edges {
-			if e.From == results[i].ID || e.To == results[i].ID {
+			if e.From != results[i].ID && e.To != results[i].ID {
+				continue
+			}
+			other := e.To
+			if other == results[i].ID {
+				other = e.From
+			}
+			ok, err := s.canSee(ctx, p, other, visible)
+			if err != nil {
+				return err
+			}
+			if ok {
 				results[i].Links = append(results[i].Links, e)
 			}
 		}
 	}
 	return nil
+}
+
+// canSee reports whether the principal may read memory id, caching answers in seen.
+func (s *Service) canSee(ctx context.Context, p Principal, id string, seen map[string]bool) (bool, error) {
+	if ok, done := seen[id]; done {
+		return ok, nil
+	}
+	_, err := s.readable(ctx, s.store, p, id, "")
+	switch CodeOf(err) {
+	case "":
+		seen[id] = true
+	case CodeNotFound:
+		seen[id] = false
+	default:
+		return false, err
+	}
+	return seen[id], nil
 }

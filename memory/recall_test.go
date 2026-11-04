@@ -174,3 +174,20 @@ func TestRecallExpand(t *testing.T) {
 		t.Fatalf("links without expand = %+v", got[0].Links)
 	}
 }
+
+func TestRecallExpandHidesUnreadableEnds(t *testing.T) {
+	f := newFixture(t)
+	shared := f.remember(t, inProject(alice, "p"), memory.RememberRequest{Content: "the deploy window is friday"})
+	f.remember(t, alice, memory.RememberRequest{Content: "my private note about the window", RelatedTo: []string{shared.ID}})
+	got := f.recall(t, inProject(bob, "p"), memory.RecallRequest{Query: "deploy window", Expand: 1})
+	if len(got) != 1 || got[0].ID != shared.ID {
+		t.Fatalf("bob recall = %v", resultIDs(got))
+	}
+	if len(got[0].Links) != 0 {
+		t.Fatalf("bob sees links into alice's private scope: %+v", got[0].Links)
+	}
+	mine := f.recall(t, inProject(alice, "p"), memory.RecallRequest{Query: "deploy window", Expand: 1, Scopes: []string{"project"}})
+	if len(mine) != 1 || len(mine[0].Links) != 1 {
+		t.Fatalf("alice should still see her own link: %+v", mine)
+	}
+}
