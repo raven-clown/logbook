@@ -21,7 +21,7 @@ make check   # lint plus tests with the 80% coverage check
 
 ## Layout
 
-No code yet. The planned layout, from `docs/design.md` section 5:
+The layout from `docs/design.md` section 5. Built so far: `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`. The rest is planned.
 
 | Package | Holds |
 |---|---|
