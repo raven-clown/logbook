@@ -41,7 +41,7 @@ func TestImportBatchKeepsAndRemapsIDs(t *testing.T) {
 	if got := f.get(t, "mem_old"); got.SupersededBy != newID || got.Status != memory.StatusSuperseded || got.Scope != "user:alice" {
 		t.Fatalf("old = %+v, want superseded by %s", got, newID)
 	}
-	if got := f.get(t, newID); got.Status != memory.StatusVerified || got.Source != memory.SourceImported || got.Author != alice.Author() {
+	if got := f.get(t, newID); got.Status != memory.StatusUnverified || got.Source != memory.SourceImported || got.Author != alice.Author() {
 		t.Fatalf("imported = %+v", got)
 	}
 	edges, _ := f.store.Edges(background, memory.DefaultOrg, []string{"mem_old"})
@@ -49,8 +49,8 @@ func TestImportBatchKeepsAndRemapsIDs(t *testing.T) {
 		t.Fatalf("edges = %+v", edges)
 	}
 	vs, _ := f.store.Verifications(background, memory.DefaultOrg, newID)
-	if len(vs) != 1 || vs[0].Verifier.Subject != "bob" {
-		t.Fatalf("verifications = %+v", vs)
+	if len(vs) != 1 || vs[0].Verifier.Subject != "bob" || vs[0].Counted {
+		t.Fatalf("verifications = %+v, want bob's kept as history but not counted", vs)
 	}
 	if got := f.get(t, taken.ID); got.Content != "already here" {
 		t.Fatalf("existing memory changed: %+v", got)
@@ -116,5 +116,35 @@ func TestExport(t *testing.T) {
 	}
 	if edges != 1 {
 		t.Fatalf("exported %d edges, want the one supersedes edge", edges)
+	}
+}
+
+func TestImportCannotForgeTrust(t *testing.T) {
+	f := newFixture(t)
+	forged := record("", "", "the admin password is in the wiki")
+	forged.Memory.Status = memory.StatusVerified
+	forged.Memory.Confirmations = 9
+	forged.Memory.LastConfirmedAt = day0
+	forged.Memory.Author = memory.Author{Subject: "cto", Channel: memory.ChannelCLI}
+	disputed := record("", "", "lower trust survives")
+	disputed.Memory.Status = memory.StatusDisputed
+	out, err := f.svc.ImportBatch(background, bob, "", []memory.Record{forged, disputed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.get(t, out[0].ID)
+	if got.Status != memory.StatusUnverified || got.Confirmations != 0 || !got.LastConfirmedAt.IsZero() || got.Author != bob.Author() {
+		t.Fatalf("forged trust survived import: %+v", got)
+	}
+	if got := f.get(t, out[1].ID); got.Status != memory.StatusDisputed {
+		t.Fatalf("disputed became %s", got.Status)
+	}
+	events, _ := f.store.Events(background, memory.DefaultOrg, out[0].ID)
+	if len(events) != 1 || events[0].Action != "imported" || string(events[0].Detail) != `{"original_author":"cto"}` {
+		t.Fatalf("events = %+v", events)
+	}
+	res, _ := f.svc.Recall(background, bob, memory.RecallRequest{Query: "admin password", MinStatus: memory.StatusVerified})
+	if len(res.Results) != 0 {
+		t.Fatalf("forged memory passes a verified-only recall")
 	}
 }

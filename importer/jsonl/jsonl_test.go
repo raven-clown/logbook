@@ -81,8 +81,12 @@ func TestJSONLRoundTrip(t *testing.T) {
 	}
 	for _, w := range want.Items {
 		g := byContent[w.Content]
-		if g == nil || g.Status != w.Status || g.Confirmations != w.Confirmations || !g.CreatedAt.Equal(w.CreatedAt) {
-			t.Fatalf("%q: got %+v, want %+v", w.Content, g, w)
+		wantStatus := w.Status
+		if wantStatus == memory.StatusVerified {
+			wantStatus = memory.StatusUnverified
+		}
+		if g == nil || g.Status != wantStatus || g.Confirmations != 0 || !g.CreatedAt.Equal(w.CreatedAt) {
+			t.Fatalf("%q: got %+v, want status %s and no confirmations", w.Content, g, wantStatus)
 		}
 	}
 	res, err := dst.Recall(ctx, alice, memory.RecallRequest{Query: "npm"})

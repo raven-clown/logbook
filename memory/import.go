@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // Record is a memory with its links and verifications, as exported and imported.
@@ -25,6 +26,10 @@ var errSkip = errors.New("skip")
 // is free and gets a new one otherwise; supersede links, edges and verifications
 // are rewritten to the new IDs. scope is used for records without one.
 // A record that fails validation is skipped and reported in its outcome.
+//
+// Imported trust is not taken on faith: verified memories arrive unverified, the
+// importer becomes the author, and imported verifications are kept as history
+// without counting. Lower-trust states (disputed, superseded, forgotten) survive.
 func (s *Service) ImportBatch(ctx context.Context, p Principal, scope string, recs []Record) ([]ImportOutcome, error) {
 	out := make([]ImportOutcome, len(recs))
 	err := s.store.Tx(ctx, func(st Store) error {
@@ -89,18 +94,18 @@ func (s *Service) importMemory(ctx context.Context, st Store, p Principal, scope
 		return nil, err
 	}
 	switch m.Status {
-	case "":
+	case "", StatusUnverified, StatusVerified:
 		m.Status = StatusUnverified
-	case StatusUnverified, StatusVerified, StatusDisputed, StatusSuperseded, StatusForgotten:
+	case StatusDisputed, StatusSuperseded, StatusForgotten:
 	default:
 		return nil, Errorf(CodeInvalidArgument, "status", "unknown status %q", m.Status)
 	}
 	if m.Source == "" {
 		m.Source = SourceImported
 	}
-	if m.Author.Subject == "" {
-		m.Author = p.Author()
-	}
+	original := m.Author.Subject
+	m.Author = p.Author()
+	m.Confirmations, m.Disputes, m.LastConfirmedAt = 0, 0, time.Time{}
 	now := s.clock()
 	if m.CreatedAt.IsZero() {
 		m.CreatedAt = now
@@ -121,7 +126,11 @@ func (s *Service) importMemory(ctx context.Context, st Store, p Principal, scope
 	if err := st.Insert(ctx, &m); err != nil {
 		return nil, err
 	}
-	return &m, s.event(ctx, st, p, m.ID, "imported", nil)
+	var detail map[string]any
+	if original != "" && original != p.Subject {
+		detail = map[string]any{"original_author": original}
+	}
+	return &m, s.event(ctx, st, p, m.ID, "imported", detail)
 }
 
 func (s *Service) relink(ctx context.Context, st Store, p Principal, m *Memory, rec Record, ids map[string]string) error {
@@ -169,7 +178,7 @@ func (s *Service) relink(ctx context.Context, st Store, p Principal, m *Memory, 
 		}
 	}
 	for _, v := range rec.Verifications {
-		v.OrgID, v.MemoryID = p.OrgID, m.ID
+		v.OrgID, v.MemoryID, v.Counted = p.OrgID, m.ID, false
 		if err := st.AddVerification(ctx, v); err != nil {
 			return err
 		}
