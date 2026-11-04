@@ -28,8 +28,10 @@ var errSkip = errors.New("skip")
 // A record that fails validation is skipped and reported in its outcome.
 //
 // Imported trust is not taken on faith: verified memories arrive unverified, the
-// importer becomes the author, and imported verifications are kept as history
-// without counting. Lower-trust states (disputed, superseded, forgotten) survive.
+// importer becomes the author, the review date is worked out again from the kind
+// and a creation time that is never in the future, and imported verifications
+// are kept as history without counting. Lower-trust states (disputed,
+// superseded, forgotten) survive.
 func (s *Service) ImportBatch(ctx context.Context, p Principal, scope string, recs []Record) ([]ImportOutcome, error) {
 	out := make([]ImportOutcome, len(recs))
 	err := s.store.Tx(ctx, func(st Store) error {
@@ -107,15 +109,11 @@ func (s *Service) importMemory(ctx context.Context, st Store, p Principal, scope
 	m.Author = p.Author()
 	m.Confirmations, m.Disputes, m.LastConfirmedAt = 0, 0, time.Time{}
 	now := s.clock()
-	if m.CreatedAt.IsZero() {
+	if m.CreatedAt.IsZero() || m.CreatedAt.After(now) {
 		m.CreatedAt = now
 	}
-	if m.UpdatedAt.IsZero() {
-		m.UpdatedAt = now
-	}
-	if m.ReviewAfter.IsZero() {
-		m.ReviewAfter = ReviewAfter(m.CreatedAt, kind, s.periods)
-	}
+	m.UpdatedAt = now
+	m.ReviewAfter = ReviewAfter(m.CreatedAt, kind, s.periods)
 	if m.ID == "" || !scopeID.MatchString(m.ID) {
 		m.ID = s.newID()
 	} else if _, err := st.Get(ctx, p.OrgID, m.ID); err == nil {

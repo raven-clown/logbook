@@ -148,3 +148,26 @@ func TestImportCannotForgeTrust(t *testing.T) {
 		t.Fatalf("forged memory passes a verified-only recall")
 	}
 }
+
+func TestImportCannotForgeFreshness(t *testing.T) {
+	f := newFixture(t)
+	forever := record("", "", "this never goes stale")
+	forever.Memory.ReviewAfter = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	future := record("", "", "written in the future")
+	future.Memory.CreatedAt = day0.Add(365 * 24 * time.Hour)
+	past := record("", "", "written last year")
+	past.Memory.CreatedAt = day0.Add(-365 * 24 * time.Hour)
+	out, err := f.svc.ImportBatch(background, alice, "", []memory.Record{forever, future, past})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.get(t, out[0].ID).ReviewAfter; !got.Equal(day0.Add(memory.DefaultReviewPeriods[memory.KindFact])) {
+		t.Fatalf("forged review_after kept: %v", got)
+	}
+	if got := f.get(t, out[1].ID); !got.CreatedAt.Equal(day0) || !got.ReviewAfter.Equal(day0.Add(memory.DefaultReviewPeriods[memory.KindFact])) {
+		t.Fatalf("future created_at = %v, review_after = %v", got.CreatedAt, got.ReviewAfter)
+	}
+	if got := f.get(t, out[2].ID); !got.CreatedAt.Equal(day0.Add(-365*24*time.Hour)) || !got.ReviewAfter.Equal(got.CreatedAt.Add(memory.DefaultReviewPeriods[memory.KindFact])) {
+		t.Fatalf("past memory = %v, review_after = %v", got.CreatedAt, got.ReviewAfter)
+	}
+}
