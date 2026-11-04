@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "../cmd/logbook") // #nosec G204 -- fixed build of this repository
+	build := exec.CommandContext(context.Background(), "go", "build", "-o", binary, "../cmd/logbook") // #nosec G204 -- fixed build of this repository
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "building logbook:", err)
