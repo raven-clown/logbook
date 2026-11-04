@@ -1,10 +1,10 @@
 # logbook design
 
-Status: draft for review, 2026-11-04. Revised the same day for the Storage, Admin API, "Everything is free" and Contributing sections of the contract.
+Status: approved, 2026-11-04. Follows `mothership/CONTRACT.md` as of commit 1ed968a.
 
 logbook is a shared memory for agents. Any agent can write what it learned and read what others learned, over MCP or a small REST API. It runs as one Go binary with embedded SQLite by default and Postgres for teams. It works with no model at all, and gets better search and fact extraction when it is pointed at transponder or any OpenAI-compatible endpoint.
 
-It is one of the four projects in `mothership/CONTRACT.md` and follows that contract. Where this spec needs something the contract does not say yet, it is listed under "Open choices and contract questions" at the end.
+It is one of the four projects in `mothership/CONTRACT.md` and follows that contract. The questions this spec raised against the contract are settled there, and section 13 records how.
 
 ## 1. Goals
 
@@ -13,7 +13,7 @@ It is one of the four projects in `mothership/CONTRACT.md` and follows that cont
 - One binary and one data file for a demo in under five minutes, on Windows, macOS and Linux. The same binary on Postgres for a team, with several replicas.
 - A complete admin API, so the planned mothership console can set logbook up and run it without anyone editing YAML.
 - Clear plugin points so outside contributors can add vector indexes, embedding providers, extractors, importers, staleness rules and more SQL backends without touching the core.
-- Nothing held back. Roles, audit, multi-tenancy, Postgres replicas and the admin API are all in the Apache-2.0 build, and the README says so.
+- Nothing held back. Roles, audit, Postgres replicas, the admin API and, when they ship, organisations are all in the Apache-2.0 build, and the README says so.
 
 Non-goals for v1: any UI of its own (the console is a separate project), an entity graph built by a model (the graphiti and cognee approach), and per-memory access lists below the scope level.
 
@@ -32,7 +32,7 @@ Both projects are good and worth learning from. This comparison is from their RE
 | Corrections | Old facts stay and accumulate | `topic_key` updates in place | Supersede chain kept; recall returns the current fact and says what it replaced |
 | Staleness | Time-aware retrieval | Review of stale knowledge | Review date per kind, stale flag in results, review queue, pluggable staleness rules |
 | Links | Entity linking for retrieval; graph memory is a paid platform feature | Obsidian export | Typed edges between memories, returned by recall |
-| Team features | SSO, audit logs and on-prem are on the paid Custom plan | Self-hosted Engram Cloud for sharing; no published pricing | OIDC SSO, roles, audit, tenants and Postgres replicas in the same free build |
+| Team features | SSO, audit logs and on-prem are on the paid Custom plan | Self-hosted Engram Cloud for sharing; no published pricing | OIDC SSO, roles, audit and Postgres replicas in the same free build |
 
 In short:
 
@@ -41,7 +41,7 @@ In short:
 3. Corrections are kept and used. When a fact is corrected, the old one is marked `superseded` and linked to the new one. If a query matches the old wording, recall still returns the new fact with a note about what changed. Nothing is silently overwritten and nothing silently piles up.
 4. It notices when facts get old. Each kind of memory has a review period. Past it, a memory is flagged `stale` in results and shows up in a review queue. Confirming it resets the clock. Contributors can add rules, such as "stale when a referenced file changed in git".
 5. It is built to be run by a team. Postgres for several replicas, roles, an audit log and an admin API that a console can drive end to end, all free.
-6. It fits the mothership stack. It sits behind airlock for auth and audit, and calls transponder for embeddings and extraction, forwarding the caller's token so cost lands on the right person. It also runs fine alone.
+6. It fits the mothership stack. It sits behind airlock for auth and audit, and calls transponder for embeddings and extraction, forwarding the caller's token so transponder bills the right person. It also runs fine alone.
 
 engram already has conflict surfacing and review tools, so logbook does not claim to be the first to think about stale or conflicting memories. The difference is that logbook stores trust and corrections as state that ranking and filtering rely on, and does it for many callers at once.
 
@@ -68,7 +68,8 @@ A short piece of text that is worth remembering, plus metadata.
 | Field | Meaning |
 |---|---|
 | `id` | `mem_` plus a ULID, sortable by creation time |
-| `tenant` | Tenant id, `default` unless multi-tenancy is on |
+| `org_id` | Organisation id, `default` until organisations ship |
+| `version` | Integer, bumped on every change, checked through `If-Match` on admin writes |
 | `scope` | `user:<subject>`, `project:<id>` or `team:<id>` |
 | `content` | The text, up to 8 KiB |
 | `kind` | `fact`, `preference`, `decision`, `procedure` or `observation` |
@@ -89,12 +90,12 @@ A short piece of text that is worth remembering, plus metadata.
 Every memory lives in exactly one scope. Read and write rules:
 
 - `user:<sub>`: only that subject.
-- `project:<id>`: in `open` mode (the default) any authenticated caller in the tenant. In `restricted` mode only callers whose token lists the project in the configured claim, or who hold a `member` binding for it.
+- `project:<id>`: in `open` mode (the default) any authenticated caller in the organisation. In `restricted` mode only callers whose token lists the project in the configured claim, or who hold a `member` binding for it.
 - `team:<id>`: only callers whose token lists the team in the configured claim (default `groups`), or who hold a `member` binding for it.
 
 If the caller does not name a scope, `remember` writes to the current project when one is known and to the user scope otherwise. `recall` searches every scope the caller can read, and each result says which scope it came from.
 
-The current project comes from the `project` argument, then the `X-Logbook-Project` header, then the `default_project` setting. In stdio mode the default is the name of the enclosing git repository, or the working directory name.
+The current project comes from the `project` argument, then the `X-Project` header (which airlock can set per caller), then the `default_project` setting. In stdio mode the default is the name of the enclosing git repository, or the working directory name.
 
 ### Roles and bindings
 
@@ -103,14 +104,14 @@ Access beyond token claims is granted with role bindings, stored in SQL and mana
 A binding is `{principal, role, target}`:
 
 - `principal` is `user:<subject>`, `group:<name>` (matched against the teams claim) or `key:<name>` (an API key).
-- `role` is one of `admin` (whole admin API), `viewer` (read-only admin API), `member` (read and write a project or team scope) or `verifier` (counted confirms where a scope requires verifiers).
+- `role` is one of the contract's shared roles, `admin` (whole admin API), `viewer` (read-only admin API) and `member` (read and write a project or team scope), or logbook's own `verifier` (counted confirms where a scope requires verifiers).
 - `target` is `*`, `project:<id>`, `project:*`, `team:<id>` or `team:*`. `admin` and `viewer` only take `*`.
 
-The first admins come from `auth.bootstrap_admins` in YAML or the environment, so a new install has someone who can log in to the console. With `--insecure-local`, the local identity is an admin.
+The first admins come from `auth.bootstrap_admins` in YAML or the environment. With no config at all, logbook prints a one-time admin API key to stderr on first start, as the contract requires, so a new user can open the console without writing YAML. In stdio mode the local identity is an admin.
 
-### Tenants
+### Organisations
 
-Every row carries a tenant id. With `auth.tenant_claim` unset there is one tenant, `default`. When it is set, the claim's value picks the tenant, and no read or write crosses tenants. Admins and viewers are per tenant. Bootstrap admins are admins in every tenant.
+Every table that holds runtime or usage data has an `org_id` column, and every query filters by it, as the contract requires. In v1 it is always `default`. When organisations ship across the stack, the organisation will come from the token, and no read or write will cross organisations. Because the column is there from the first migration, that needs no data migration.
 
 ### Trust states
 
@@ -168,7 +169,7 @@ Exact duplicates (same normalized content in the same scope) are not stored twic
 
 ### MCP tools
 
-Served over stdio (`logbook mcp`) and Streamable HTTP at `/mcp`, built on the official Go MCP SDK (`github.com/modelcontextprotocol/go-sdk`). Tool results are JSON in a text content block, plus `structuredContent` with an output schema.
+Served over stdio (`logbook mcp`) and Streamable HTTP at `/mcp`, built on `github.com/mark3labs/mcp-go`, the MCP library the contract picks for all four projects. In stdio mode logs go to stderr so stdout stays clean for the protocol. Tool results are JSON in a text content block, plus `structuredContent` with an output schema.
 
 `remember`
 - in: `content` (required), `kind`, `subject`, `scope` (`user`, `project`, `team`), `project`, `team`, `tags`, `refs`, `corrects`, `related_to`, `valid_until`, `evidence`, `extract` (bool)
@@ -186,11 +187,11 @@ Served over stdio (`logbook mcp`) and Streamable HTTP at `/mcp`, built on the of
 - out: `{id, status}`
 
 `list_memories`
-- in: `scopes`, `project`, `team`, `status`, `kind`, `subject`, `tag`, `author`, `stale` (bool), `order` (`newest` or `review`), `limit` (default 50, max 200), `cursor`
+- in: `scopes`, `project`, `team`, `status`, `kind`, `subject`, `tag`, `author`, `stale` (bool), `order` (`newest` or `review`), `limit` (default 50, max 500), `cursor`
 - `order: review` puts disputed first, then stale, then unverified. That is the review queue.
-- out: `{items, next_cursor}`
+- out: `{items, next_cursor}`, with `next_cursor` absent on the last page
 
-`verify` (addition to the contract's list, see section 13)
+`verify`
 - in: `id` (required), `verdict` (`confirm` or `dispute`), `note`
 - out: `{id, status, confirmations, disputes, counted}`
 
@@ -211,12 +212,12 @@ Same service, same rules, JSON in and out. This is the caller's view: only scope
 
 ### Admin API under `/admin/v1/`
 
-JSON, same identity rules as the rest of the API, `admin` role for changes and `viewer` or `admin` for reads. Every list takes `cursor` and `limit` and returns `next_cursor`. It covers everything the console needs to show or change, so a new user can go from an empty install to a working setup without a YAML file.
+JSON, same identity rules as the rest of the API, `admin` role for changes and `viewer` or `admin` for reads. It follows the contract's shared admin conventions: lists take `cursor` and `limit` (default 50, at most 500) and return `{"items": [...], "next_cursor": "..."}` with `next_cursor` absent on the last page; every resource has an integer `version`, `PATCH` and `DELETE` take it in `If-Match`, and a mismatch is 409 `version_conflict`; items defined in the YAML file or the environment are read-only and marked `managed_by_file`; every write adds an audit record. It covers everything the console needs to show or change, so a new user can go from an empty install to a working setup without a YAML file.
 
 | Area | Endpoints |
 |---|---|
 | Status | `GET status`: version, uptime, database and schema version, embedder and extractor reachability, counts by scope and status, warnings (no secret key set, Postgres without pgvector, and so on) |
-| Settings | `GET settings`: every setting with its value, default, source (`default`, `stored`, `file`, `env`) and `locked`. `PATCH settings`. Secrets are never returned, only `set: true` |
+| Settings | `GET settings`: every setting with its value, default, source (`default`, `stored`, `file`, `env`) and `managed_by_file`. `PATCH settings` with the settings `version` in `If-Match`. Secrets are never returned, only `set: true` |
 | Connection checks | `POST checks/embedder`, `POST checks/extractor`, `POST checks/oidc`: test a candidate setting before saving it |
 | API keys | `GET api-keys`, `POST api-keys` (the key is shown once), `DELETE api-keys/{id}` |
 | Access | `GET bindings`, `POST bindings`, `DELETE bindings/{id}`, `GET principals` (subjects, groups and keys seen recently, for pickers) |
@@ -225,7 +226,7 @@ JSON, same identity rules as the rest of the API, `admin` role for changes and `
 | Review | `GET review`: the review queue across scopes |
 | Graph | `GET memories/{id}/graph?depth=2`: nodes and edges around a memory |
 | Audit | `GET audit`: every change with actor, channel, request id, target and before and after values, filterable by actor, action, target and time |
-| Usage | `GET usage`: operations, embedding and extraction calls, and token and cost totals per day, per principal and per scope |
+| Usage | `GET usage`: counts of operations, embedding calls and extraction calls per day, per principal and per scope. No money: the contract has the console show cost from transponder |
 | Import and export | `POST imports` (upload with a format name, runs as a job), `GET export` |
 | Jobs | `GET jobs`, `GET jobs/{id}`, `POST jobs/reindex`, `POST jobs/purge` |
 
@@ -245,25 +246,23 @@ Common console tasks and the calls behind them. Each one is one or two calls, so
 | Find and fix a wrong memory | `GET memories?q=...`, `PATCH memories/{id}` or `DELETE memories/{id}` |
 | See why a memory was corrected | `GET memories/{id}/graph`, `GET audit?target=...` |
 | Read the audit log | `GET audit` |
-| See usage and cost | `GET usage` |
+| See how much memory is used | `GET usage` (cost comes from transponder) |
 | Import notes or another tool's export | `POST imports`, `GET jobs/{id}` |
 | Back up | `GET export` |
-
-Usage numbers come from transponder's `X-Usage-Input-Tokens`, `X-Usage-Output-Tokens` and `X-Usage-Cost-USD` headers on each embedding and extraction call, so the console can show what memory costs per person without asking transponder.
 
 The OpenAPI 3.0 file `api/openapi.yaml` describes both `/v1/` and `/admin/v1/`. It is written by hand and is the source of truth. A test checks that every registered route is in the file and that handler responses validate against it.
 
 ### Errors
 
-One shape everywhere: `{"error": {"code": "not_found", "message": "..."}}` with codes `invalid_argument`, `unauthenticated`, `permission_denied`, `not_found`, `conflict`, `unavailable`, `internal`. Changing a locked setting returns `conflict` and names the file or variable that locks it. MCP tool errors carry the same code and message with `isError: true`.
+One shape everywhere, from the contract: `{"error": {"code": "not_found", "message": "...", "field": "..."}}` with a matching HTTP status. Codes: `invalid_argument` (400, with `field` set to the offending field), `unauthenticated` (401), `permission_denied` (403), `not_found` (404), `conflict` (409), `version_conflict` (409), `managed_by_file` (409, the message names the file key or variable), `unavailable` (503), `internal` (500). MCP tool errors carry the same code and message with `isError: true`.
 
 Also `/healthz`, `/readyz` and `/metrics` as the contract requires.
 
 ### CLI
 
 ```
-logbook serve   --config logbook.yaml        HTTP: MCP at /mcp, REST at /v1, admin at /admin/v1, health, metrics
-logbook mcp     --config logbook.yaml        MCP over stdio, local identity
+logbook serve   [--config logbook.yaml]      HTTP: MCP at /mcp, REST at /v1, admin at /admin/v1, health, metrics
+logbook mcp     [--config logbook.yaml]      MCP over stdio, local identity, logs on stderr
 logbook remember | recall | list | forget | verify   one operation, against the local database or --server URL
 logbook review                               walk the review queue and confirm, dispute or skip each item
 logbook import  <format> <path>              built-in formats: jsonl, markdown
@@ -279,7 +278,7 @@ Local commands open the database directly with the local identity. With `--serve
 ```
  MCP stdio   MCP HTTP   REST   Admin API   CLI
      \          |        |        |        /
-      +----------- identity --------------+     token -> principal {tenant, subject, teams, projects, roles, channel, client}
+      +----------- identity --------------+     token -> principal {org, subject, teams, projects, roles, channel, client}
                        |
                  memory.Service   admin.Service
                   /    |     |     \      |
@@ -294,7 +293,7 @@ Packages. The plugin interfaces live in public packages so out-of-tree code can 
 |---|---|
 | `cmd/logbook` | flags, subcommands, wiring |
 | `memory` | types, `Service`, scope rules, trust rules, ranking. No I/O of its own |
-| `admin` | `Service` for settings, bindings, API keys, scopes, audit, usage, jobs |
+| `admin` | `Service` for settings, bindings, API keys, scopes, audit, usage counts, jobs |
 | `store` | `Store` interface, registry and the shared conformance suite `store/storetest` |
 | `store/sqlite` | default backend on `modernc.org/sqlite` (pure Go) with FTS5 |
 | `store/postgres` | team backend on `pgx` with `tsvector` full-text search |
@@ -306,7 +305,7 @@ Packages. The plugin interfaces live in public packages so out-of-tree code can 
 | `importer` | `Importer` interface and registry; `importer/jsonl`, `importer/markdown` |
 | `internal/identity` | OIDC JWT checks (`github.com/coreos/go-oidc/v3`), API keys, bindings, local identity |
 | `internal/settings` | layered settings: defaults, stored, file, env; hot reload |
-| `internal/mcpserver` | tool definitions on top of `memory.Service` |
+| `internal/mcpserver` | tool definitions on top of `memory.Service`, using `mcp-go` |
 | `internal/rest` | `/v1/` handlers |
 | `internal/adminapi` | `/admin/v1/` handlers |
 | `internal/jobs` | background jobs: embedding backfill, purge, import, reindex |
@@ -320,11 +319,11 @@ Plugins register themselves by name in an `init` function, the same way `databas
 type Store interface {
     Insert(ctx context.Context, m *memory.Memory) error
     Update(ctx context.Context, m *memory.Memory) error
-    Get(ctx context.Context, tenant, id string) (*memory.Memory, error)
+    Get(ctx context.Context, org, id string) (*memory.Memory, error)
     List(ctx context.Context, f memory.Filter) ([]*memory.Memory, string, error)
     SearchText(ctx context.Context, q string, f memory.Filter, limit int) ([]memory.Hit, error)
     AddEdge(ctx context.Context, e memory.Edge) error
-    Edges(ctx context.Context, tenant string, ids []string) ([]memory.Edge, error)
+    Edges(ctx context.Context, org string, ids []string) ([]memory.Edge, error)
     AddVerification(ctx context.Context, v memory.Verification) error
     AppendEvent(ctx context.Context, e memory.Event) error
     Tx(ctx context.Context, fn func(Store) error) error
@@ -332,19 +331,19 @@ type Store interface {
 }
 
 type Index interface {
-    Upsert(ctx context.Context, tenant, scope, id string, v []float32) error
-    Delete(ctx context.Context, tenant, id string) error
-    Search(ctx context.Context, tenant string, scopes []string, v []float32, k int) ([]memory.Hit, error)
+    Upsert(ctx context.Context, org, scope, id string, v []float32) error
+    Delete(ctx context.Context, org, id string) error
+    Search(ctx context.Context, org string, scopes []string, v []float32, k int) ([]memory.Hit, error)
 }
 
 type Embedder interface {
-    Embed(ctx context.Context, texts []string) ([][]float32, Usage, error)
+    Embed(ctx context.Context, texts []string) ([][]float32, error)
     Model() string
 }
 
 type Extractor interface {
-    Extract(ctx context.Context, text string) ([]memory.Candidate, Usage, error)
-    Contradicts(ctx context.Context, a, b string) (bool, Usage, error)
+    Extract(ctx context.Context, text string) ([]memory.Candidate, error)
+    Contradicts(ctx context.Context, a, b string) (bool, error)
 }
 
 type Importer interface {
@@ -357,7 +356,7 @@ type Rule interface {
 }
 ```
 
-The admin data (settings, bindings, keys, audit, usage, jobs) goes through a second interface on the same backend. These signatures will be adjusted during planning, but the set of plugin points is fixed by this spec.
+The admin data (settings, bindings, keys, audit, usage counts, jobs) goes through a second interface on the same backend. These signatures will be adjusted during planning, but the set of plugin points is fixed by this spec.
 
 ### Storage
 
@@ -382,7 +381,7 @@ Background jobs (embedding backfill, purge, import, reindex) are rows in `jobs`.
 
 ### Settings
 
-Settings are layered, lowest first: built-in defaults, values stored in the `settings` table, the YAML file, environment variables. A key set in the file or the environment is locked, and the admin API shows where the lock comes from. Everything else can be changed through the admin API and applies without a restart. Each replica checks a settings version number every five seconds and reloads on change.
+Settings are layered, lowest first: built-in defaults, values stored in the `settings` table, the YAML file, environment variables. A key set in the file or the environment is read-only through the API and marked `managed_by_file`, with the source shown. Everything else can be changed through the admin API and applies without a restart. Each replica checks a settings version number every five seconds and reloads on change.
 
 Only three things are bootstrap-only and must come from the file or environment: `listen_addr`, `database`, and `auth.bootstrap_admins`.
 
@@ -400,7 +399,7 @@ Each scope type, and each individual scope through the admin API, can set a defa
 
 ### transponder integration
 
-The embedder and extractor speak the OpenAI-compatible API, so transponder is just a base URL in settings, and the same code also works with OpenAI, Ollama or vLLM directly. Every call forwards the caller's `Authorization` header unchanged, along with `traceparent`, `tracestate` and `X-Request-ID`, as the contract requires. Background jobs and stdio mode have no caller token to forward, so they use the API key from settings. Usage headers on each response are added to `usage_daily`.
+The embedder and extractor speak the OpenAI-compatible API, so transponder is just a base URL in settings, and the same code also works with OpenAI, Ollama or vLLM directly. Every call forwards the caller's `Authorization` header unchanged, along with `traceparent`, `tracestate` and `X-Request-ID`, as the contract requires. Background jobs and stdio mode have no caller token to forward, so they use the API key from settings. logbook counts its embedding and extraction calls in `usage_daily` but does not read or store cost; transponder owns that. Tests and the mothership end-to-end run point at transponder's `echo` provider, so they need no keys.
 
 ## 6. Data flow
 
@@ -447,7 +446,6 @@ auth:
     audience: "logbook"
     teams_claim: "groups"
     projects_claim: ""
-  tenant_claim: ""
   project_mode: "open"
 
 embedder:
@@ -468,16 +466,18 @@ telemetry:
   otlp_endpoint: ""
 ```
 
-Trust weights, default `min_status`, verify policies, review periods, `forget_retention`, `default_project` and API keys are settings too, with the defaults given earlier in this spec. Every key can be overridden from the environment, for example `LOGBOOK_LISTEN_ADDR` and `LOGBOOK_EMBEDDER_BASE_URL`. With no OIDC issuer and no API keys, `serve` refuses to start unless `--insecure-local` is given, which accepts any request on loopback as the local admin, so a first-time user can open the console and finish setup there.
+Trust weights, default `min_status`, verify policies, review periods, `forget_retention`, `default_project` and API keys are settings too, with the defaults given earlier in this spec. Every key can be overridden from the environment, with `__` between nested keys: `LOGBOOK_LISTEN_ADDR`, `LOGBOOK_DATABASE__DSN`, `LOGBOOK_EMBEDDER__BASE_URL`.
+
+With no config file at all, `logbook serve` starts on SQLite at `./logbook.db`, and on the first start, when no admin exists yet, prints a one-time admin API key to stderr. The key is stored hashed. That is the path from download to console with no YAML.
 
 ## 9. Testing
 
 - Unit tests for `memory`: scope resolution, trust transitions including the counted-confirm rule and verify policies, conflict and supersede handling, ranking and staleness, all against an in-memory fake store and a deterministic fake embedder (hashed bag of words), so similarity is predictable.
 - `store/storetest`: one conformance suite that every backend runs. SQLite runs it on a temp file in every `go test`. Postgres runs it when `LOGBOOK_TEST_POSTGRES_DSN` is set, and CI provides a Postgres service with pgvector. Migrations are tested from an empty database and from each earlier version.
 - `admin` and `internal/settings` tests: layering, locks, hot reload, secret encryption, bindings, audit records for every change.
-- Identity tests with a local JWKS served from `httptest` and signed test tokens, including tenant separation.
-- transponder integration tested against an `httptest` server that checks forwarded headers and returns usage headers.
-- MCP tests through the SDK's in-memory transport. REST and admin tests through `httptest`, with every response validated against `api/openapi.yaml`.
+- Identity tests with a local JWKS served from `httptest` and signed test tokens, including organisation separation through `org_id`.
+- transponder integration tested against an `httptest` server that checks forwarded headers. The mothership end-to-end run uses transponder's `echo` provider.
+- MCP tests through `mcp-go`'s in-process client. REST and admin tests through `httptest`, with every response validated against `api/openapi.yaml`.
 - One end-to-end test that builds the binary, runs `logbook mcp` over stdio, and plays the demo story: remember a fact, remember a conflicting one, correct it, recall with the old wording and get the new answer, confirm from the CLI channel, move the clock past the review date, see it in the review queue.
 - No `-race` on the development machine (no cgo). CI on Linux runs with `-race`.
 
@@ -487,9 +487,9 @@ The work is split so there is something to demo early:
 
 1. Core: memory model, SQLite store with migrations, MCP over stdio, CLI. Demo-able alone.
 2. Server: Streamable HTTP, REST, identity, bindings, metrics and traces.
-3. Admin API: settings, keys, audit, usage, jobs, OpenAPI file.
+3. Admin API: settings, keys, audit, usage counts, jobs, OpenAPI file, first-start admin key.
 4. Postgres with pgvector, replicas.
-5. transponder: embeddings, extraction, contradiction checks, usage tracking.
+5. transponder: embeddings, extraction, contradiction checks.
 
 Release:
 - goreleaser builds for Windows, macOS and Linux on amd64 and arm64, plus a distroless container image.
@@ -504,7 +504,7 @@ Release:
 
 1. Single binary. SQLite through `modernc.org/sqlite` by default, Postgres through `pgx` for teams, both pure Go, with forward-only embedded migrations that run at startup.
 2. Vectors: brute force in process on SQLite, pgvector on Postgres, text search only on Postgres without pgvector.
-3. Official Go MCP SDK for both transports.
+3. `mark3labs/mcp-go` for both transports, as the contract requires.
 4. Hybrid search with reciprocal rank fusion; text search alone when no embedder is set. A trigram tokenizer setting for languages without spaces.
 5. Five trust states, stale computed rather than stored, the counted-confirm rule (same subject over the same channel does not count), and a per-scope verify policy.
 6. Corrections keep history and redirect recall; subject collisions mark the older memory disputed.
@@ -513,19 +513,20 @@ Release:
 9. Plugins are compiled in and registered by name. No runtime plugin loading.
 10. One OpenAI-compatible client covers transponder, OpenAI, Ollama and vLLM.
 11. `/readyz` fails only on the database, since logbook keeps working without transponder.
-12. Project scope is open to any authenticated caller in the tenant by default, with a `restricted` mode. Team scope always needs membership, from a claim or a binding.
+12. Project scope is open to any authenticated caller in the organisation by default, with a `restricted` mode. Team scope always needs membership, from a claim or a binding.
 13. Roles and access are role bindings stored in SQL. Bootstrap admins come from the file or environment.
-14. Settings are layered and editable through the admin API, with file and environment values locked. Only the listen address, database and bootstrap admins need a file.
-15. Multi-tenancy through a tenant claim, off by default.
+14. Settings are layered and editable through the admin API, with file and environment values marked `managed_by_file`. Nothing needs a file: with no config logbook runs on SQLite and prints a first-start admin key.
+15. `org_id` on every runtime table, always `default` in v1.
 16. No UI in this repository. Human review in v1 is the CLI `review` command and, later, the mothership console.
 17. A hand-written OpenAPI 3.0 file is the source of truth for `/v1/` and `/admin/v1/`, checked by tests.
 
-## 13. Open choices and contract questions
+## 13. Settled questions
 
-1. The contract lists the MCP tools as `remember`, `logbook`, `forget`, `list_memories`. The second one looks like a typo for `recall`, which is what this spec uses. The contract should be fixed.
-2. This spec adds a fifth tool, `verify`. Verification is central to the design, and folding it into `remember` would make that tool confusing. It is an addition, so nothing else in the stack breaks, but the contract should list it.
-3. Should "verified" mean a different subject or channel confirmed it (this spec's default), or should only people be able to verify, for example through the CLI, REST or the console but never over MCP? The per-scope `verifiers` policy already allows the stricter setup, so this is only about the default.
-4. The current project travels as a tool argument or an `X-Logbook-Project` header. If airlock should inject it, the header needs to go into the contract.
-5. The extraction model name in the example config, `memory-extract`, assumes transponder can expose a stable alias for a cheap model. That depends on transponder's design.
-6. Role names (`admin`, `viewer`, `member`, `verifier`) and the binding shape would be easier for the console if all four projects used the same ones. That could become a shared section in the contract.
-7. Usage is tracked per principal from transponder's headers. If the console should show cost in one place, it may be simpler for the console to read it from transponder alone, and logbook would then only track operation counts.
+Settled in the contract at 1ed968a, or by the user on review:
+
+1. The MCP tools are `remember`, `recall`, `verify`, `forget` and `list_memories`.
+2. The current project travels in `X-Project`, which airlock can set per caller.
+3. Extraction asks transponder for the `memory-extract` route alias.
+4. Roles are the shared `admin`, `member` and `viewer`, plus logbook's own `verifier`.
+5. Cost is shown from transponder. logbook only counts operations.
+6. "Verified" keeps this spec's default: a confirm counts when it comes from a different subject or a different channel than the author. Scopes can switch to the stricter `verifiers` policy.
