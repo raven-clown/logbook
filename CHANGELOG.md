@@ -10,3 +10,4 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - Memory service with trust states, corrections, conflict detection, staleness and a review queue.
 - MCP tools `remember`, `recall`, `verify`, `forget` and `list_memories`.
 - JSONL import and export.
+- The `logbook` command: `mcp`, `remember`, `recall`, `list`, `verify`, `forget`, `import`, `export`, `migrate`, `version`.

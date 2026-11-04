@@ -15,13 +15,17 @@ go build ./...
 go test -race ./...
 golangci-lint run ./...
 make check   # lint plus tests with the 80% coverage check
+go run ./cmd/logbook mcp           # MCP over stdio on ./logbook.db
+go run ./cmd/logbook recall "query"
 ```
+
+`LOGBOOK_NOW` (an RFC 3339 time) fixes the clock of the `logbook` command. It exists for tests and recorded demos; do not use it anywhere else.
 
 `-race` needs cgo. On a machine without a C compiler, run `go test ./...` locally and let CI run the race detector.
 
 ## Layout
 
-The layout from `docs/design.md` section 5. Built so far: `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`. The rest is planned.
+The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`, `importer`, `importer/jsonl`, `internal/config`, `internal/mcpserver`. The rest is planned.
 
 | Package | Holds |
 |---|---|
