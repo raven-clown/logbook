@@ -43,7 +43,7 @@ type Store struct {
 // Open opens or creates the database at path, which is a file path or ":memory:",
 // and brings its schema up to date.
 func Open(ctx context.Context, path string) (*Store, error) {
-	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_txlock=immediate"
+	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
@@ -54,6 +54,12 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	if path != ":memory:" {
+		if err := useWAL(ctx, db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("opening %s: %w", path, err)
+		}
 	}
 	files, err := fs.Sub(migrations, "migrations")
 	if err != nil {
@@ -89,6 +95,25 @@ func (s *Store) Tx(ctx context.Context, fn func(memory.Store) error) error {
 		return fmt.Errorf("committing transaction: %w", err)
 	}
 	return nil
+}
+
+// useWAL switches the file to write-ahead logging. The mode is stored in the
+// file, and switching a new file returns SQLITE_BUSY without waiting on the busy
+// timeout when another process is opening it too, so it is retried for a while.
+func useWAL(ctx context.Context, db *sql.DB) error {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var mode string
+		err := db.QueryRowContext(ctx, "PRAGMA journal_mode=WAL").Scan(&mode)
+		if err == nil || !strings.Contains(err.Error(), "SQLITE_BUSY") || time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }
 
 const timeLayout = "2006-01-02T15:04:05.000000000Z"

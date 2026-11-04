@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/raven-clown/logbook/memory"
@@ -86,5 +87,29 @@ func TestOpenBadPath(t *testing.T) {
 	}
 	if _, err := sqlite.Open(context.Background(), filepath.Join(blocker, "logbook.db")); err == nil {
 		t.Fatal("opening under a regular file should fail")
+	}
+}
+
+func TestConcurrentFirstOpen(t *testing.T) {
+	for round := range 10 {
+		path := filepath.Join(t.TempDir(), "logbook.db")
+		errs := make(chan error, 4)
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Go(func() {
+				s, err := sqlite.Open(context.Background(), path)
+				if err == nil {
+					err = s.Close()
+				}
+				errs <- err
+			})
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
 	}
 }

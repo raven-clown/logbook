@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
@@ -51,10 +52,13 @@ func Run(ctx context.Context, db *sql.DB, files fs.FS) ([]string, error) {
 			}
 			continue
 		}
-		if err := apply(ctx, db, m); err != nil {
+		ran, err := apply(ctx, db, m)
+		if err != nil {
 			return applied, err
 		}
-		applied = append(applied, m.name)
+		if ran {
+			applied = append(applied, m.name)
+		}
 	}
 	return applied, nil
 }
@@ -108,22 +112,34 @@ func appliedChecksums(ctx context.Context, db *sql.DB) (map[int]string, error) {
 	return done, rows.Err()
 }
 
-func apply(ctx context.Context, db *sql.DB, m migration) error {
+// apply runs one migration in its own transaction. It checks again inside the
+// transaction, so when two processes start on a new database only one applies
+// it; the other reports false.
+func apply(ctx context.Context, db *sql.DB, m migration) (bool, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("migration %s: %w", m.name, err)
+		return false, fmt.Errorf("migration %s: %w", m.name, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	var sum string
+	switch err := tx.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE version = ?", m.version).Scan(&sum); {
+	case err == nil && sum == m.checksum:
+		return false, nil
+	case err == nil:
+		return false, fmt.Errorf("migration %s changed after it was applied", m.name)
+	case !errors.Is(err, sql.ErrNoRows):
+		return false, fmt.Errorf("migration %s: %w", m.name, err)
+	}
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
-		return fmt.Errorf("migration %s: %w", m.name, err)
+		return false, fmt.Errorf("migration %s: %w", m.name, err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		"INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
 		m.version, m.name, m.checksum, time.Now().UTC().Format(time.RFC3339)); err != nil {
-		return fmt.Errorf("migration %s: %w", m.name, err)
+		return false, fmt.Errorf("migration %s: %w", m.name, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("migration %s: %w", m.name, err)
+		return false, fmt.Errorf("migration %s: %w", m.name, err)
 	}
-	return nil
+	return true, nil
 }
