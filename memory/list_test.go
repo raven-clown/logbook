@@ -119,3 +119,23 @@ func idsOf(ms []*memory.Memory) []string {
 	}
 	return out
 }
+
+func TestReviewQueueSkipsSuperseded(t *testing.T) {
+	f := newFixture(t)
+	a := f.remember(t, alice, memory.RememberRequest{Content: "the vault is in us-east-1"})
+	b := f.remember(t, alice, memory.RememberRequest{Content: "the vault is in eu-west-1", Corrects: a.ID})
+	f.advance(200 * 24 * time.Hour)
+	for _, r := range []memory.ListRequest{{Order: memory.OrderReview}, {Stale: true}} {
+		res, err := f.svc.List(background, alice, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ids := idsOf(res.Items); len(ids) != 1 || ids[0] != b.ID {
+			t.Fatalf("%+v listed %v, want only the current memory", r, ids)
+		}
+	}
+	res, _ := f.svc.List(background, alice, memory.ListRequest{Order: memory.OrderReview, Statuses: []memory.Status{memory.StatusSuperseded}})
+	if ids := idsOf(res.Items); len(ids) != 1 || ids[0] != a.ID {
+		t.Fatalf("explicit superseded filter = %v", ids)
+	}
+}

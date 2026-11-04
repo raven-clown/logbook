@@ -31,7 +31,8 @@ type ListResult struct {
 }
 
 // List returns one page of memories. Order review puts disputed first, then
-// stale, then unverified: that is the review queue.
+// stale, then unverified: that is the review queue. The queue and the stale
+// filter show only active memories unless statuses are given.
 func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (*ListResult, error) {
 	limit := r.Limit
 	switch {
@@ -67,6 +68,9 @@ func (s *Service) List(ctx context.Context, p Principal, r ListRequest) (*ListRe
 	}
 	if r.Stale {
 		f.StaleAt = now
+	}
+	if len(f.Statuses) == 0 && (order == OrderReview || r.Stale) {
+		f.Statuses = []Status{StatusUnverified, StatusVerified, StatusDisputed}
 	}
 	items, next, err := s.store.List(ctx, f)
 	if err != nil {

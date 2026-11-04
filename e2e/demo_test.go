@@ -132,7 +132,7 @@ func TestDemoStory(t *testing.T) {
 	if err := json.Unmarshal(d.cli("2027-06-01T00:00:00Z", "list", "--order", "review", "--project", "demo", "--json"), &queue); err != nil {
 		t.Fatal(err)
 	}
-	if len(queue.Items) < 2 || queue.Items[0].ID != first.Memories[0].ID || queue.Items[0].Status != memory.StatusDisputed || queue.Items[1].ID != thirdID {
+	if len(queue.Items) != 2 || queue.Items[0].ID != first.Memories[0].ID || queue.Items[0].Status != memory.StatusDisputed || queue.Items[1].ID != thirdID {
 		t.Fatalf("review queue = %+v", queue.Items)
 	}
 
