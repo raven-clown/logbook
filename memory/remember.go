@@ -55,7 +55,10 @@ func (s *Service) Remember(ctx context.Context, p Principal, r RememberRequest) 
 	if err != nil {
 		return nil, err
 	}
-	sc, err := writableScope(p, r.Scope, r.Project, r.Team)
+	if err := validMeta(r); err != nil {
+		return nil, err
+	}
+	sc, err := s.targetScope(ctx, p, r)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +122,30 @@ func (s *Service) Remember(ctx context.Context, p Principal, r RememberRequest) 
 		return nil, err
 	}
 	return &RememberResult{Memories: []Remembered{out}}, nil
+}
+
+// targetScope picks the scope a new memory goes to. A correction stays in the
+// scope of the memory it corrects, so it cannot hide a shared memory from
+// people who cannot read the new one.
+func (s *Service) targetScope(ctx context.Context, p Principal, r RememberRequest) (Scope, error) {
+	if r.Corrects == "" {
+		return writableScope(p, r.Scope, r.Project, r.Team)
+	}
+	old, err := s.readable(ctx, s.store, p, r.Corrects, "corrects")
+	if err != nil {
+		return Scope{}, err
+	}
+	if r.Scope == "" && r.Project == "" && r.Team == "" {
+		return writableScope(p, old.Scope, "", "")
+	}
+	sc, err := writableScope(p, r.Scope, r.Project, r.Team)
+	if err != nil {
+		return Scope{}, err
+	}
+	if sc.String() != old.Scope {
+		return Scope{}, Errorf(CodeInvalidArgument, "corrects", "a correction must be in the same scope as the memory it corrects, %s", old.Scope)
+	}
+	return sc, nil
 }
 
 func (s *Service) correctable(ctx context.Context, st Store, p Principal, id string) (*Memory, error) {

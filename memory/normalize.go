@@ -34,3 +34,47 @@ func validContent(s string) (string, error) {
 	}
 	return s, nil
 }
+
+// Limits on the metadata a memory can carry.
+const (
+	MaxSubjectBytes  = 200
+	MaxEvidenceBytes = 8192
+	MaxListItems     = 32
+	MaxTagBytes      = 64
+	MaxRefBytes      = 2048
+)
+
+func validMeta(r RememberRequest) error {
+	if !utf8.ValidString(r.Subject) || len(r.Subject) > MaxSubjectBytes {
+		return Errorf(CodeInvalidArgument, "subject", "subject must be valid UTF-8 and at most %d bytes", MaxSubjectBytes)
+	}
+	if !utf8.ValidString(r.Evidence) || len(r.Evidence) > MaxEvidenceBytes {
+		return Errorf(CodeInvalidArgument, "evidence", "evidence must be valid UTF-8 and at most %d bytes", MaxEvidenceBytes)
+	}
+	if err := validList("tags", r.Tags, MaxTagBytes); err != nil {
+		return err
+	}
+	if err := validList("refs", r.Refs, MaxRefBytes); err != nil {
+		return err
+	}
+	if len(r.RelatedTo) > MaxListItems {
+		return Errorf(CodeInvalidArgument, "related_to", "at most %d related memories", MaxListItems)
+	}
+	switch r.Source {
+	case "", SourceDirect, SourceExtracted, SourceImported:
+		return nil
+	}
+	return Errorf(CodeInvalidArgument, "source", "unknown source %q", r.Source)
+}
+
+func validList(field string, items []string, maxBytes int) error {
+	if len(items) > MaxListItems {
+		return Errorf(CodeInvalidArgument, field, "at most %d %s", MaxListItems, field)
+	}
+	for _, it := range items {
+		if strings.TrimSpace(it) == "" || !utf8.ValidString(it) || len(it) > maxBytes {
+			return Errorf(CodeInvalidArgument, field, "each of %s must be non-empty valid UTF-8 of at most %d bytes", field, maxBytes)
+		}
+	}
+	return nil
+}

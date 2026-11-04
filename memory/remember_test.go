@@ -172,3 +172,54 @@ func TestRememberReviewAfter(t *testing.T) {
 		t.Fatalf("preference review_after = %v", got)
 	}
 }
+
+func TestRememberCorrectionStaysInScope(t *testing.T) {
+	f := newFixture(t)
+	p := inProject(alice, "p")
+	a := f.remember(t, p, memory.RememberRequest{Content: "the vpn uses wireguard"})
+
+	_, err := f.svc.Remember(background, p, memory.RememberRequest{Content: "the vpn uses tailscale", Scope: "user", Corrects: a.ID})
+	wantCode(t, err, memory.CodeInvalidArgument, "corrects")
+	if got := f.get(t, a.ID).Status; got != memory.StatusUnverified {
+		t.Fatalf("rejected correction changed the old memory to %s", got)
+	}
+
+	b := f.remember(t, alice, memory.RememberRequest{Content: "the vpn uses tailscale", Corrects: a.ID})
+	if b.Scope != "project:p" {
+		t.Fatalf("correction without a scope landed in %s, want the corrected memory's scope", b.Scope)
+	}
+}
+
+func TestRememberMetadataLimits(t *testing.T) {
+	many := func(n int, s string) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = s + strings.Repeat("x", i)
+		}
+		return out
+	}
+	tests := []struct {
+		name  string
+		r     memory.RememberRequest
+		field string
+	}{
+		{"long subject", memory.RememberRequest{Content: "x", Subject: strings.Repeat("s", 201)}, "subject"},
+		{"long evidence", memory.RememberRequest{Content: "x", Evidence: strings.Repeat("e", 8193)}, "evidence"},
+		{"too many tags", memory.RememberRequest{Content: "x", Tags: many(33, "t")}, "tags"},
+		{"long tag", memory.RememberRequest{Content: "x", Tags: []string{strings.Repeat("t", 65)}}, "tags"},
+		{"empty tag", memory.RememberRequest{Content: "x", Tags: []string{" "}}, "tags"},
+		{"too many refs", memory.RememberRequest{Content: "x", Refs: many(33, "r")}, "refs"},
+		{"long ref", memory.RememberRequest{Content: "x", Refs: []string{strings.Repeat("r", 2049)}}, "refs"},
+		{"too many related", memory.RememberRequest{Content: "x", RelatedTo: many(33, "mem_")}, "related_to"},
+		{"unknown source", memory.RememberRequest{Content: "x", Source: "made-up"}, "source"},
+		{"bad subject bytes", memory.RememberRequest{Content: "x", Subject: "\xff"}, "subject"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newFixture(t).svc.Remember(background, alice, tt.r)
+			wantCode(t, err, memory.CodeInvalidArgument, tt.field)
+		})
+	}
+	f := newFixture(t)
+	f.remember(t, alice, memory.RememberRequest{Content: "at the limits", Subject: strings.Repeat("s", 200), Tags: many(32, "t"), Refs: many(32, "r")})
+}
