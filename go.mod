@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/mark3labs/mcp-go v1.5.0
 	github.com/oklog/ulid/v2 v2.1.2
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.61.1
 )
 
