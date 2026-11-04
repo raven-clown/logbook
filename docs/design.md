@@ -1,6 +1,6 @@
 # logbook design
 
-Status: draft for review, 2026-11-04. Revised the same day for the Storage, Admin API and "Everything is free" sections of the contract.
+Status: draft for review, 2026-11-04. Revised the same day for the Storage, Admin API, "Everything is free" and Contributing sections of the contract.
 
 logbook is a shared memory for agents. Any agent can write what it learned and read what others learned, over MCP or a small REST API. It runs as one Go binary with embedded SQLite by default and Postgres for teams. It works with no model at all, and gets better search and fact extraction when it is pointed at transponder or any OpenAI-compatible endpoint.
 
@@ -31,8 +31,8 @@ Both projects are good and worth learning from. This comparison is from their RE
 | Trust | ADD-only, every fact has equal weight | Agent-driven review and judge tools | Explicit trust state, who confirmed it and how, recall can require it |
 | Corrections | Old facts stay and accumulate | `topic_key` updates in place | Supersede chain kept; recall returns the current fact and says what it replaced |
 | Staleness | Time-aware retrieval | Review of stale knowledge | Review date per kind, stale flag in results, review queue, pluggable staleness rules |
-| Links | Entity linking for retrieval | Obsidian export | Typed edges between memories, returned by recall |
-| Admin and hosted extras | Managed platform has optimizations the open-source build lacks | Sharing and replication through Engram Cloud | Admin API, roles, audit and Postgres replicas in the same free build |
+| Links | Entity linking for retrieval; graph memory is a paid platform feature | Obsidian export | Typed edges between memories, returned by recall |
+| Team features | SSO, audit logs and on-prem are on the paid Custom plan | Self-hosted Engram Cloud for sharing; no published pricing | OIDC SSO, roles, audit, tenants and Postgres replicas in the same free build |
 
 In short:
 
@@ -44,6 +44,20 @@ In short:
 6. It fits the mothership stack. It sits behind airlock for auth and audit, and calls transponder for embeddings and extraction, forwarding the caller's token so cost lands on the right person. It also runs fine alone.
 
 engram already has conflict surfacing and review tools, so logbook does not claim to be the first to think about stale or conflicting memories. The difference is that logbook stores trust and corrections as state that ranking and filtering rely on, and does it for many callers at once.
+
+### What the others keep for paid plans
+
+Checked on 2026-11-04 against each vendor's own pricing page. Only what the page states is listed. Where a page is silent about a feature, nothing is claimed.
+
+| Project | Paid-only, as listed on its pricing page | Source |
+|---|---|---|
+| mem0 | On the Custom plan only: graph memory (entity linking), user profiles, memory consolidation, advanced analytics, SSO, audit logs and SLA, on-prem deployment | mem0.ai/pricing |
+| Zep (Graphiti is its open-source library) | Audit logs, bring-your-own-cloud and bring-your-own-keys on Enterprise only; custom extraction instructions, webhooks and analytics from Flex Plus ($375 a month) up; projects capped at 2, 5 or 10 below Enterprise. The page does not mention a self-hosted server edition | getzep.com/pricing |
+| Letta | SAML and OIDC SSO and role-based access control on Enterprise; sharing agents with teammates on Teams Pro at $20 a seat | docs.letta.com/letta-code/pricing |
+| cognee | Its enterprise offering, delivered in the customer's own cloud, lists bi-temporal memory and conflict resolution, provenance on every answer, and per-user personalization; SSO and advanced permissions vary by enterprise tier | cognee.ai/pricing |
+| engram | No paid tier found. Engram Cloud is run with `engram cloud serve` on your own machines, and no pricing is published | engram README and docs/engram-cloud |
+
+The pattern is that the features a team needs to share memory safely, SSO, roles, audit and conflict handling, sit behind a sales call. In logbook all of them, along with provenance, corrections and staleness, ship in the Apache-2.0 build, and the README says so.
 
 ## 3. Concepts
 
@@ -207,13 +221,33 @@ JSON, same identity rules as the rest of the API, `admin` role for changes and `
 | API keys | `GET api-keys`, `POST api-keys` (the key is shown once), `DELETE api-keys/{id}` |
 | Access | `GET bindings`, `POST bindings`, `DELETE bindings/{id}`, `GET principals` (subjects, groups and keys seen recently, for pickers) |
 | Scopes | `GET scopes`: every project, team and user scope with counts and last activity. `PATCH scopes/{scope}`: per-scope overrides of `min_status` and verify policy |
-| Memories | `GET memories` across all scopes with the same filters as `/v1/`, `GET memories/{id}`, `PATCH memories/{id}` (kind, subject, tags, refs, valid_until), `DELETE memories/{id}`, `POST memories/{id}/verify`, `POST memories/bulk` (`forget`, `purge`, `confirm`, `dispute`, `move` to another scope) |
+| Memories | `GET memories` across all scopes with the same filters as `/v1/` plus `q` for text search, `GET memories/{id}`, `PATCH memories/{id}` (kind, subject, tags, refs, valid_until), `DELETE memories/{id}`, `POST memories/{id}/verify`, `POST memories/bulk` (`forget`, `purge`, `confirm`, `dispute`, `move` to another scope) |
 | Review | `GET review`: the review queue across scopes |
 | Graph | `GET memories/{id}/graph?depth=2`: nodes and edges around a memory |
 | Audit | `GET audit`: every change with actor, channel, request id, target and before and after values, filterable by actor, action, target and time |
 | Usage | `GET usage`: operations, embedding and extraction calls, and token and cost totals per day, per principal and per scope |
 | Import and export | `POST imports` (upload with a format name, runs as a job), `GET export` |
 | Jobs | `GET jobs`, `GET jobs/{id}`, `POST jobs/reindex`, `POST jobs/purge` |
+
+`GET status` also returns a setup checklist, so the console can walk a new user through the first run: sign-in configured (OIDC issuer or at least one API key), an admin bound, embedder checked, extractor checked, first memory written. Each item says whether it is done and which endpoint finishes it.
+
+Common console tasks and the calls behind them. Each one is one or two calls, so the console can do it in a few clicks:
+
+| Task | Calls |
+|---|---|
+| First-run setup | `GET status`, `POST checks/oidc`, `PATCH settings`, `POST bindings` |
+| Connect transponder | `POST checks/embedder`, `PATCH settings`, `POST jobs/reindex` |
+| Give an agent access | `POST api-keys`, `POST bindings` |
+| Give a person or group access to a team or project | `GET principals`, `POST bindings` |
+| Remove access | `GET bindings`, `DELETE bindings/{id}` or `DELETE api-keys/{id}` |
+| Make a team return verified memories only | `PATCH scopes/team:<id>` |
+| Review stale and disputed memories | `GET review`, `POST memories/{id}/verify` or `POST memories/bulk` |
+| Find and fix a wrong memory | `GET memories?q=...`, `PATCH memories/{id}` or `DELETE memories/{id}` |
+| See why a memory was corrected | `GET memories/{id}/graph`, `GET audit?target=...` |
+| Read the audit log | `GET audit` |
+| See usage and cost | `GET usage` |
+| Import notes or another tool's export | `POST imports`, `GET jobs/{id}` |
+| Back up | `GET export` |
 
 Usage numbers come from transponder's `X-Usage-Input-Tokens`, `X-Usage-Output-Tokens` and `X-Usage-Cost-USD` headers on each embedding and extraction call, so the console can show what memory costs per person without asking transponder.
 
