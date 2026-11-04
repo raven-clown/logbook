@@ -39,6 +39,8 @@ No code yet. The planned layout, from `docs/design.md` section 5:
 
 Plugins register by name in `init`, like `database/sql` drivers, and are enabled with a blank import in `cmd/logbook`.
 
+The design is `docs/design.md`, milestone issues are drafted in `docs/issues.md`, and implementation plans live in `docs/plans/`.
+
 ## Rules
 
 - Follow CONTRIBUTING.md: tests with every change, a failing test first for a bug fix, table-driven tests, no network in unit tests, no bare `time.Sleep`.

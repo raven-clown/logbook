@@ -12,7 +12,7 @@ Labels: `enhancement`, `claimed`
 
 **Why:** Everything else builds on one set of types and one place that decides what a status change means.
 
-**Proposed API:** package `memory` with `Memory`, `Draft`, `Edge`, `Verification`, `Event`, `Filter`, `Hit`, `Principal`, `Scope` (parsed from `user:<sub>`, `project:<id>`, `team:<id>`), `Kind`, `Status`. Functions `ParseScope`, `(Principal).CanRead(Scope)`, `(Principal).CanWrite(Scope)`, and `ApplyVerdict(m *Memory, v Verification) (counted bool)`.
+**Proposed API:** package `memory` with `Memory`, `Draft`, `Edge`, `Verification`, `Event`, `Filter`, `Hit`, `Principal`, `Scope` (parsed from `user:<sub>`, `project:<id>`, `team:<id>`), `Kind`, `Status`. Functions `ParseScope`, `(Principal).CanRead(Scope)`, `(Principal).CanWrite(Scope)`, and `ApplyVerdict(m *Memory, v *Verification, now time.Time, period time.Duration) error`, which sets `v.Counted`.
 
 **Behavior:**
 - Five statuses: `unverified`, `verified`, `disputed`, `superseded`, `forgotten`.
@@ -95,9 +95,9 @@ Depends on 1.
 
 **Why:** Memories need to be flagged when they are old enough to need another look.
 
-**Proposed API:** `staleness.Rule` from the design, `staleness.Age(periods map[memory.Kind]time.Duration)`, and `staleness.Check(ctx, rules, m, now) (stale bool, reason string)`.
+**Proposed API:** a `memory.Rule` interface (`Name() string`, `Check(ctx, m, now) (stale bool, reason string, err error)`), `memory.CheckStale(ctx, rules, m, now)`, `memory.ReviewAfter(created, kind, periods)`, and in package `staleness` the rule `ReviewDue()` and `Default() []memory.Rule`.
 
-**Behavior:** defaults: observation 30 days, fact and procedure 180, decision 365, preference never. `review_after` is reset by a counted confirm.
+**Behavior:** `review_after` is set when a memory is written, from its kind: observation 30 days, fact and procedure 180, decision 365, preference never. `ReviewDue` says stale with reason `review_due` once `now` reaches it. A counted confirm resets it.
 
 **Tests:** each kind at, before and after its period, preference never stale.
 
