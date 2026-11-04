@@ -1,0 +1,7 @@
+/logbook
+/logbook.exe
+/dist/
+cover.out
+*.db
+*.db-shm
+*.db-wal
