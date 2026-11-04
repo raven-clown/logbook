@@ -22,7 +22,7 @@
 - IDs are `mem_` plus a ULID.
 - Every type that is returned to a caller (`Memory`, `Edge`, `Verification`, `Remembered`, `RememberResult`, `Recalled`, `Correction`, `RecallResult`, `VerifyResult`, `ListResult`, `Record`) has snake_case JSON tags matching the field names in design section 4, with `omitempty` or `omitzero` on optional fields. `Recalled` embeds `Memory`, so its fields sit at the top level of each result.
 - In stdio mode nothing but protocol goes to stdout. Logs are JSON through `slog` on stderr.
-- No comments that restate code, no em-dashes, no mention of AI or assistants anywhere, no attribution trailers in commits.
+- Follow the writing rules in AGENTS.md: short comments about why, no em-dashes, no commit trailers.
 - Commit after every task with a Conventional Commits message, update AGENTS.md in the same commit when commands, layout or rules change, add a CHANGELOG line under Unreleased for anything users will notice, and push to `main`.
 
 ## Review focus
