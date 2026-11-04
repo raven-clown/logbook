@@ -2,7 +2,10 @@ module github.com/raven-clown/logbook
 
 go 1.26.0
 
-require modernc.org/sqlite v1.61.1
+require (
+	github.com/oklog/ulid/v2 v2.1.2
+	modernc.org/sqlite v1.61.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
