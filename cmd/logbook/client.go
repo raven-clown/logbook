@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -240,6 +241,18 @@ func (r *remote) export(ctx context.Context, scopes []string, w io.Writer) error
 		return err
 	}
 	defer func() { _ = res.Body.Close() }()
-	_, err = io.Copy(w, res.Body)
-	return err
+	// Each line is decoded and written again, so a server can't put raw
+	// terminal control bytes on stdout.
+	sc := bufio.NewScanner(res.Body)
+	sc.Buffer(make([]byte, 64<<10), 4<<20)
+	for n := 1; sc.Scan(); n++ {
+		var rec memory.Record
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			return fmt.Errorf("line %d of the export is not a memory record: %w", n, err)
+		}
+		if err := jsonl.Write(w, rec); err != nil {
+			return err
+		}
+	}
+	return sc.Err()
 }

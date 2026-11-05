@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -152,5 +153,18 @@ func TestServerErrorShown(t *testing.T) {
 		if code, _, _ := r.run(args...); code == 0 {
 			t.Fatalf("%v accepted --server", args)
 		}
+	}
+}
+
+func TestServerExportChecksLines(t *testing.T) {
+	esc := string(rune(0x1b))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"mem_1","content":"fine","scope":"user:x"}`+"\n"+esc+"[2J"+esc+"]0;owned\a\n")
+	}))
+	defer srv.Close()
+	c := newCLI(t)
+	code, out, _ := c.run("export", "--server", srv.URL, "--token", "lbk_x")
+	if code != 1 || strings.Contains(out, esc) {
+		t.Fatalf("export passed raw bytes through: %d %q", code, out)
 	}
 }
