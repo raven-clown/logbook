@@ -117,11 +117,38 @@ func method(r *http.Request) string {
 	return "OTHER"
 }
 
+type routeKey struct{}
+
+type routeHolder struct{ pattern string }
+
+// withRoute makes sure r carries a holder for the matched pattern.
+func withRoute(r *http.Request) *http.Request {
+	if _, ok := r.Context().Value(routeKey{}).(*routeHolder); ok {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), routeKey{}, &routeHolder{}))
+}
+
+// Routes wraps the ServeMux and records the pattern it matched, so the
+// middleware outside sees it even when a handler in between copied the request.
+func Routes(mux http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+		if h, ok := r.Context().Value(routeKey{}).(*routeHolder); ok {
+			h.pattern = r.Pattern
+		}
+	})
+}
+
 func route(r *http.Request) string {
-	if r.Pattern == "" {
+	p := r.Pattern
+	if h, ok := r.Context().Value(routeKey{}).(*routeHolder); ok && h.pattern != "" {
+		p = h.pattern
+	}
+	if p == "" {
 		return "unmatched"
 	}
-	return r.Pattern
+	return p
 }
 
 // AccessLog writes one line per request.
@@ -129,6 +156,7 @@ func AccessLog(l *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
+		r = withRoute(r)
 		next.ServeHTTP(sw, r)
 		l.InfoContext(r.Context(), "request", "method", method(r), "route", route(r), "status", sw.code(),
 			"duration_ms", time.Since(start).Milliseconds())

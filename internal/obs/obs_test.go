@@ -165,3 +165,27 @@ func TestUnknownMethodsShareALabel(t *testing.T) {
 		t.Fatalf("unknown methods got their own labels:\n%s", body)
 	}
 }
+
+func TestRoutesThroughCopies(t *testing.T) {
+	rec := tracetest.NewSpanRecorder()
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec)))
+	t.Cleanup(func() { otel.SetTracerProvider(old) })
+	m := obs.NewMetrics()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/memories/{id}", func(http.ResponseWriter, *http.Request) {})
+	copying := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), struct{}{}, 1)))
+		})
+	}
+	h := obs.Trace(m.Wrap(copying(obs.Routes(mux))))
+	get(t, h, "/v1/memories/mem_1", nil)
+	body := get(t, m.Handler(), "/metrics", nil).Body.String()
+	if !strings.Contains(body, `route="GET /v1/memories/{id}"`) {
+		t.Fatalf("route lost behind a middleware that copies the request:\n%s", body)
+	}
+	if spans := rec.Ended(); len(spans) != 1 || spans[0].Name() != "GET /v1/memories/{id}" {
+		t.Fatalf("span name lost: %v", spans)
+	}
+}

@@ -60,10 +60,10 @@ func Trace(next http.Handler) http.Handler {
 		ctx, span := otel.Tracer(tracerName).Start(ctx, method(r), trace.WithSpanKind(trace.SpanKindServer))
 		defer span.End()
 		sw := &statusWriter{ResponseWriter: w}
-		r = r.WithContext(ctx)
+		r = withRoute(r.WithContext(ctx))
 		next.ServeHTTP(sw, r)
-		if r.Pattern != "" {
-			span.SetName(r.Pattern)
+		if rt := route(r); rt != "unmatched" {
+			span.SetName(rt)
 		}
 		span.SetAttributes(
 			attribute.String("http.request.method", method(r)),

@@ -33,12 +33,13 @@ func NewMetrics() *Metrics {
 	return m
 }
 
-// Wrap counts and times requests. It must sit directly outside the ServeMux,
-// which sets the matched pattern on the request it is given.
+// Wrap counts and times requests. The route label comes from Routes, or from
+// the request itself when Wrap sits directly outside the ServeMux.
 func (m *Metrics) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
+		r = withRoute(r)
 		next.ServeHTTP(sw, r)
 		rt := route(r)
 		m.requests.WithLabelValues(method(r), rt, strconv.Itoa(sw.code())).Inc()
