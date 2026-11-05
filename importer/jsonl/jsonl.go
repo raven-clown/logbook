@@ -11,6 +11,7 @@ import (
 	"io"
 
 	"github.com/raven-clown/logbook/importer"
+	"github.com/raven-clown/logbook/internal/safejson"
 	"github.com/raven-clown/logbook/memory"
 )
 
@@ -52,6 +53,6 @@ func Write(w io.Writer, rec memory.Record) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(append(b, '\n'))
+	_, err = w.Write(append(safejson.Escape(b), '\n'))
 	return err
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/raven-clown/logbook/internal/safejson"
 	"github.com/raven-clown/logbook/memory"
 )
 
@@ -33,9 +34,12 @@ func safe(s string) string {
 }
 
 func (a *app) printJSON(v any) error {
-	enc := json.NewEncoder(a.stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = a.stdout.Write(append(safejson.Escape(b), '\n'))
+	return err
 }
 
 func (a *app) printMemory(m *memory.Memory, stale bool) {

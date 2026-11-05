@@ -265,3 +265,12 @@ func TestRunEscapesTerminalControls(t *testing.T) {
 		t.Fatalf("error output carried a raw escape: %q", errOut)
 	}
 }
+
+func TestRunJSONEscapesControls(t *testing.T) {
+	c := newCLI(t)
+	raw := string([]rune{0x9b, 0x202e})
+	c.ok("remember", "note "+raw+" end")
+	if out := c.ok("list", "--json"); strings.ContainsAny(out, raw) {
+		t.Fatalf("--json printed raw control runes: %q", out)
+	}
+}
