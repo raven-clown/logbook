@@ -58,11 +58,16 @@ func forgetTool() mcp.Tool {
 	return mcp.NewTool("forget",
 		mcp.WithDescription("Hide a memory that should not be used any more. Prefer remember with corrects when the memory is wrong rather than unwanted."),
 		mcp.WithInputSchema[wire.Forget](),
-		mcp.WithOutputSchema[memory.Memory]())
+		mcp.WithOutputSchema[memory.ForgetResult]())
 }
 
 func (h *handlers) forget(ctx context.Context, a wire.Forget) (any, error) {
-	return h.svc.Forget(ctx, h.principal(ctx), a.ToRequest())
+	req := a.ToRequest()
+	m, err := h.svc.Forget(ctx, h.principal(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	return memory.NewForgetResult(m), nil
 }
 
 func listTool() mcp.Tool {

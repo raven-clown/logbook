@@ -58,3 +58,16 @@ func (s *Service) Forget(ctx context.Context, p Principal, r ForgetRequest) (*Me
 	})
 	return out, err
 }
+
+// ForgetResult is what forget returns to callers: the id and the new status,
+// never the content, since the caller may no longer be allowed to read it.
+type ForgetResult struct {
+	ID     string `json:"id"`
+	Status Status `json:"status"`
+	Purged bool   `json:"purged,omitempty"`
+}
+
+// NewForgetResult returns the ForgetResult for a forgotten memory.
+func NewForgetResult(m *Memory) *ForgetResult {
+	return &ForgetResult{ID: m.ID, Status: m.Status, Purged: m.Purged}
+}

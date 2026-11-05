@@ -153,11 +153,12 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request, p memory.Principal)
 	if err != nil {
 		return err
 	}
-	m, err := a.Service.Forget(r.Context(), p, wire.Forget{ID: r.PathValue("id"), Reason: q.Get("reason"), Purge: purge}.ToRequest())
+	req := wire.Forget{ID: r.PathValue("id"), Reason: q.Get("reason"), Purge: purge}.ToRequest()
+	m, err := a.Service.Forget(r.Context(), p, req)
 	if err != nil {
 		return err
 	}
-	httpx.WriteJSON(w, http.StatusOK, m)
+	httpx.WriteJSON(w, http.StatusOK, memory.NewForgetResult(m))
 	return nil
 }
 

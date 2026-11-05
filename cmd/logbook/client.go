@@ -25,7 +25,7 @@ type backend interface {
 	recall(ctx context.Context, r wire.Recall) (*memory.RecallResult, error)
 	list(ctx context.Context, r wire.List) (*memory.ListResult, error)
 	verify(ctx context.Context, r wire.Verify) (*memory.VerifyResult, error)
-	forget(ctx context.Context, r wire.Forget) (*memory.Memory, error)
+	forget(ctx context.Context, r wire.Forget) (*memory.ForgetResult, error)
 	export(ctx context.Context, scopes []string, w io.Writer) error
 	now() time.Time
 	close() error
@@ -104,8 +104,13 @@ func (l *local) verify(ctx context.Context, r wire.Verify) (*memory.VerifyResult
 	return l.s.svc.Verify(ctx, l.p(), r.ToRequest())
 }
 
-func (l *local) forget(ctx context.Context, r wire.Forget) (*memory.Memory, error) {
-	return l.s.svc.Forget(ctx, l.p(), r.ToRequest())
+func (l *local) forget(ctx context.Context, r wire.Forget) (*memory.ForgetResult, error) {
+	req := r.ToRequest()
+	m, err := l.s.svc.Forget(ctx, l.p(), req)
+	if err != nil {
+		return nil, err
+	}
+	return memory.NewForgetResult(m), nil
 }
 
 func (l *local) export(ctx context.Context, scopes []string, w io.Writer) error {
@@ -223,7 +228,7 @@ func (r *remote) verify(ctx context.Context, w wire.Verify) (*memory.VerifyResul
 	return &out, r.call(ctx, http.MethodPost, "/v1/memories/"+url.PathEscape(w.ID)+"/verify", nil, body, &out)
 }
 
-func (r *remote) forget(ctx context.Context, w wire.Forget) (*memory.Memory, error) {
+func (r *remote) forget(ctx context.Context, w wire.Forget) (*memory.ForgetResult, error) {
 	q := url.Values{}
 	if w.Reason != "" {
 		q.Set("reason", w.Reason)
@@ -231,7 +236,7 @@ func (r *remote) forget(ctx context.Context, w wire.Forget) (*memory.Memory, err
 	if w.Purge {
 		q.Set("purge", "true")
 	}
-	var out memory.Memory
+	var out memory.ForgetResult
 	return &out, r.call(ctx, http.MethodDelete, "/v1/memories/"+url.PathEscape(w.ID), q, nil, &out)
 }
 

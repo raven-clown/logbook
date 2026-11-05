@@ -192,9 +192,9 @@ func TestRESTDetailForgetVerifyLink(t *testing.T) {
 	}
 
 	r = e.do(&alice, http.MethodDelete, "/v1/memories/"+b.ID+"?reason=old&purge=true", "")
-	var gone memory.Memory
+	var gone map[string]any
 	r.json(t, &gone)
-	if r.code != http.StatusOK || gone.Status != memory.StatusForgotten {
+	if r.code != http.StatusOK || gone["status"] != "forgotten" || gone["id"] != b.ID || gone["content"] != nil {
 		t.Fatalf("forget %d %s", r.code, r.body)
 	}
 }
