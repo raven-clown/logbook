@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -71,15 +70,4 @@ func errorResult(err error) *mcp.CallToolResult {
 	}
 	b, _ := json.Marshal(body)
 	return mcp.NewToolResultError(string(b))
-}
-
-func parseTime(field, s string) (time.Time, error) {
-	if s == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}, memory.Errorf(memory.CodeInvalidArgument, field, "%s must be an RFC 3339 time such as 2026-11-04T09:00:00Z", field)
-	}
-	return t, nil
 }
