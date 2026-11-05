@@ -163,11 +163,11 @@ func TestHTTPClientName(t *testing.T) {
 
 func TestHTTPClientNameCleaned(t *testing.T) {
 	e := startHTTP(t)
-	c := e.namedClient(t, "evil[2J‮"+strings.Repeat("x", 300), map[string]string{"X-Test-Subject": "alice"})
+	c := e.namedClient(t, "evil"+string(rune(0x1b))+"[2J"+string(rune(0x202e))+""+strings.Repeat("x", 300), map[string]string{"X-Test-Subject": "alice"})
 	var rem memory.RememberResult
 	callHTTP(t, c, "remember", map[string]any{"content": "client names are cleaned"}, &rem)
 	m, _ := e.store.Get(context.Background(), memory.DefaultOrg, rem.Memories[0].ID)
-	if strings.ContainsAny(m.Author.Client, "‮") || len(m.Author.Client) > 100 || !strings.HasPrefix(m.Author.Client, "evil[2J") {
+	if strings.ContainsAny(m.Author.Client, string([]rune{0x1b, 0x202e})) || len(m.Author.Client) > 100 || !strings.HasPrefix(m.Author.Client, "evil[2J") {
 		t.Fatalf("client = %q", m.Author.Client)
 	}
 }
