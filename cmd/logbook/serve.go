@@ -94,6 +94,18 @@ func newHandler(d deps) http.Handler {
 	return obs.RequestID(obs.Trace(obs.AccessLog(d.logger, d.metrics.Wrap(protect))))
 }
 
+// newServer sets read limits so a slow client can't hold a connection open.
+// There is no write timeout, because an export streams for as long as it needs.
+func newServer(h http.Handler, logger *slog.Logger) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+	}
+}
+
 func (a *app) serve(args []string) error {
 	fs, c := a.flags("serve")
 	listen := fs.String("listen", "", "address to listen on, overrides listen_addr")
@@ -127,12 +139,7 @@ func (a *app) serve(args []string) error {
 	if err != nil {
 		return fmt.Errorf("listening on %s: %w", addr, err)
 	}
-	srv := &http.Server{
-		Handler:           newHandler(deps{cfg: s.cfg, store: s.store, access: access, svc: s.svc, metrics: obs.NewMetrics(), logger: logger, now: s.now}),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
-	}
+	srv := newServer(newHandler(deps{cfg: s.cfg, store: s.store, access: access, svc: s.svc, metrics: obs.NewMetrics(), logger: logger, now: s.now}), logger)
 	logger.Info("listening", "addr", ln.Addr().String(), "version", logbook.Version)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()

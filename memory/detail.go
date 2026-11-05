@@ -14,9 +14,10 @@ type Detail struct {
 }
 
 // Detail returns a memory with its edges, verifications and history. Edges
-// whose other end the caller can't read are left out.
+// whose other end the caller can't read are left out, and a forgotten memory
+// is not found.
 func (s *Service) Detail(ctx context.Context, p Principal, id string) (*Detail, error) {
-	m, err := s.readable(ctx, s.store, p, id, "id")
+	m, err := s.active(ctx, s.store, p, id, "id")
 	if err != nil {
 		return nil, err
 	}

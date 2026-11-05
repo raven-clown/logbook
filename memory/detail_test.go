@@ -127,3 +127,13 @@ func TestDetailHidesIDsInHistory(t *testing.T) {
 		t.Fatalf("alice lost her own link target: %s", last.Detail)
 	}
 }
+
+func TestDetailHidesForgotten(t *testing.T) {
+	f := newFixture(t)
+	m := f.remember(t, alice, memory.RememberRequest{Content: "hide me"})
+	if _, err := f.svc.Forget(background, alice, memory.ForgetRequest{ID: m.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.svc.Detail(background, alice, m.ID)
+	wantCode(t, err, memory.CodeNotFound, "id")
+}

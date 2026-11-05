@@ -15,7 +15,8 @@ import (
 	"github.com/raven-clown/logbook/memory"
 	"github.com/raven-clown/logbook/store"
 	"github.com/raven-clown/logbook/store/migrate"
-	_ "modernc.org/sqlite" // database/sql driver
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 //go:embed migrations/*.sql
@@ -43,7 +44,11 @@ type Store struct {
 // Open opens or creates the database at path, which is a file path or ":memory:",
 // and brings its schema up to date.
 func Open(ctx context.Context, path string) (*Store, error) {
-	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
+	return open(ctx, path, 5000)
+}
+
+func open(ctx context.Context, path string, busyMillis int) (*Store, error) {
+	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(%d)&_pragma=foreign_keys(1)&_txlock=immediate", path, busyMillis)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
@@ -70,7 +75,33 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrating %s: %w", path, err)
 	}
-	return &Store{db: db, q: db}, nil
+	return &Store{db: db, q: busyMapped{db}}, nil
+}
+
+// busy turns SQLITE_BUSY and SQLITE_LOCKED, which another process writing to
+// the same file causes, into unavailable so callers know to retry.
+func busy(err error) error {
+	if isBusy(err) {
+		return memory.Errorf(memory.CodeUnavailable, "", "the database is busy, try again")
+	}
+	return err
+}
+
+func isBusy(err error) bool {
+	var se *sqlite.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	c := se.Code() & 0xff
+	return c == sqlite3.SQLITE_BUSY || c == sqlite3.SQLITE_LOCKED
+}
+
+// busyMapped maps busy errors from writes. Reads in WAL mode don't wait on writers.
+type busyMapped struct{ querier }
+
+func (b busyMapped) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	res, err := b.querier.ExecContext(ctx, query, args...)
+	return res, busy(err)
 }
 
 // Ping checks that the database answers.
@@ -90,13 +121,19 @@ func (s *Store) Tx(ctx context.Context, fn func(memory.Store) error) error {
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		if isBusy(err) {
+			return busy(err)
+		}
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := fn(&Store{db: s.db, q: tx, inTx: true}); err != nil {
+	if err := fn(&Store{db: s.db, q: busyMapped{tx}, inTx: true}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
+		if isBusy(err) {
+			return busy(err)
+		}
 		return fmt.Errorf("committing transaction: %w", err)
 	}
 	return nil
