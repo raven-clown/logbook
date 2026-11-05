@@ -50,7 +50,8 @@ type served struct {
 	stop func() int
 }
 
-func createKey(t *testing.T, dsn, name string) string {
+func createKey(t *testing.T, dsn string) string {
+	const name = "ci"
 	t.Helper()
 	st, err := sqlite.Open(context.Background(), dsn)
 	if err != nil {
@@ -68,14 +69,14 @@ func createKey(t *testing.T, dsn, name string) string {
 }
 
 // startServe runs logbook serve in-process and waits for its listening line.
-func startServe(t *testing.T, env []string, args ...string) *served {
+func startServe(t *testing.T, env []string) *served {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	outR, outW := io.Pipe()
 	logs := &lockedBuffer{}
 	done := make(chan int, 1)
 	go func() {
-		done <- run(ctx, append([]string{"serve", "--listen", "127.0.0.1:0"}, args...), strings.NewReader(""), outW, logs, env)
+		done <- run(ctx, []string{"serve", "--listen", "127.0.0.1:0"}, strings.NewReader(""), outW, logs, env)
 		_ = outW.Close()
 	}()
 	addr := make(chan string, 1)
@@ -147,7 +148,7 @@ func (s *served) do(t *testing.T, method, path, token, body string, header ...st
 
 func TestServeRoutes(t *testing.T) {
 	c := newCLI(t)
-	key := createKey(t, c.dsn(), "ci")
+	key := createKey(t, c.dsn())
 	s := startServe(t, append(c.env, "LOGBOOK_DEFAULT_PROJECT=mothership"))
 
 	if res, body := s.get(t, "/healthz", ""); res.StatusCode != http.StatusOK || !strings.Contains(body, `"ok"`) {
@@ -234,7 +235,7 @@ func TestReadyzDatabaseDown(t *testing.T) {
 
 func TestServeMCPBehindProxy(t *testing.T) {
 	c := newCLI(t)
-	key := createKey(t, c.dsn(), "ci")
+	key := createKey(t, c.dsn())
 	s := startServe(t, c.env)
 	res, body := s.do(t, http.MethodPost, "/mcp", "", `{}`)
 	if res.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(res.Header.Get("WWW-Authenticate"), "Bearer") || !strings.Contains(body, "unauthenticated") {
@@ -259,7 +260,7 @@ func TestServeMCPBehindProxy(t *testing.T) {
 
 func TestServeStopsWithOpenStream(t *testing.T) {
 	c := newCLI(t)
-	key := createKey(t, c.dsn(), "ci")
+	key := createKey(t, c.dsn())
 	s := startServe(t, c.env)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

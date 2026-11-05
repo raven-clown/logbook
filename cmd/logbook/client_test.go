@@ -30,7 +30,7 @@ type remoteEnv struct {
 func newRemote(t *testing.T) *remoteEnv {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "server.db")
-	key := createKey(t, dsn, "ci")
+	key := createKey(t, dsn)
 	st, err := sqlite.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
