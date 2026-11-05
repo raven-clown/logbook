@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/raven-clown/logbook/memory"
@@ -102,5 +103,27 @@ func TestLinkRules(t *testing.T) {
 			_, err := f.svc.Link(background, tt.p, tt.from, tt.to)
 			wantCode(t, err, tt.code, tt.field)
 		})
+	}
+}
+
+func TestDetailHidesIDsInHistory(t *testing.T) {
+	f := newFixture(t)
+	private := f.remember(t, alice, memory.RememberRequest{Content: "alice private note"})
+	team := f.remember(t, alice, memory.RememberRequest{Content: "team runbook", Scope: "team", Team: "platform"})
+	if _, err := f.svc.Link(background, alice, team.ID, private.ID); err != nil {
+		t.Fatal(err)
+	}
+	d, err := f.svc.Detail(background, bob, team.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range d.History {
+		if strings.Contains(string(e.Detail), private.ID) {
+			t.Fatalf("history shows an id bob can't read: %s %s", e.Action, e.Detail)
+		}
+	}
+	d, _ = f.svc.Detail(background, alice, team.ID)
+	if last := d.History[len(d.History)-1]; !strings.Contains(string(last.Detail), private.ID) {
+		t.Fatalf("alice lost her own link target: %s", last.Detail)
 	}
 }

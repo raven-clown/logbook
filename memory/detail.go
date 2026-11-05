@@ -1,6 +1,9 @@
 package memory
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Detail is one memory with everything recorded about it.
 type Detail struct {
@@ -45,8 +48,49 @@ func (s *Service) Detail(ctx context.Context, p Principal, id string) (*Detail, 
 	if err != nil {
 		return nil, err
 	}
-	d.History = append(d.History, hist...)
+	for _, e := range hist {
+		if e.Detail, err = s.redact(ctx, p, e.Detail, seen); err != nil {
+			return nil, err
+		}
+		d.History = append(d.History, e)
+	}
 	return d, nil
+}
+
+// eventRefs are the event detail keys that hold another memory's id.
+var eventRefs = []string{"to", "by"}
+
+// redact drops ids of memories the caller can't read from an event's detail.
+func (s *Service) redact(ctx context.Context, p Principal, detail json.RawMessage, seen map[string]bool) (json.RawMessage, error) {
+	if len(detail) == 0 {
+		return detail, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(detail, &m); err != nil {
+		return nil, err
+	}
+	changed := false
+	for _, k := range eventRefs {
+		id, ok := m[k].(string)
+		if !ok {
+			continue
+		}
+		visible, err := s.canSee(ctx, p, id, seen)
+		if err != nil {
+			return nil, err
+		}
+		if !visible {
+			delete(m, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return detail, nil
+	}
+	if len(m) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(m)
 }
 
 // Link adds a related edge from one memory to another. The caller needs write
