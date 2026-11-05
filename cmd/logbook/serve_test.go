@@ -288,3 +288,10 @@ func TestServeStopsWithOpenStream(t *testing.T) {
 		t.Fatalf("shutdown took %s", d)
 	}
 }
+
+func TestServerTimeouts(t *testing.T) {
+	srv := newServer(http.NotFoundHandler(), obs.NewLogger(io.Discard, slog.LevelInfo))
+	if srv.ReadHeaderTimeout != 10*time.Second || srv.ReadTimeout != 30*time.Second || srv.IdleTimeout == 0 || srv.WriteTimeout != 0 {
+		t.Fatalf("timeouts: header %s, read %s, idle %s, write %s", srv.ReadHeaderTimeout, srv.ReadTimeout, srv.IdleTimeout, srv.WriteTimeout)
+	}
+}
