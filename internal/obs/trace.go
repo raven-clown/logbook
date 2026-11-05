@@ -57,7 +57,7 @@ func SetupTracing(ctx context.Context, endpoint, version string) (func(context.C
 func Trace(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-		ctx, span := otel.Tracer(tracerName).Start(ctx, r.Method, trace.WithSpanKind(trace.SpanKindServer))
+		ctx, span := otel.Tracer(tracerName).Start(ctx, method(r), trace.WithSpanKind(trace.SpanKindServer))
 		defer span.End()
 		sw := &statusWriter{ResponseWriter: w}
 		r = r.WithContext(ctx)
@@ -66,7 +66,7 @@ func Trace(next http.Handler) http.Handler {
 			span.SetName(r.Pattern)
 		}
 		span.SetAttributes(
-			attribute.String("http.request.method", r.Method),
+			attribute.String("http.request.method", method(r)),
 			attribute.String("http.route", route(r)),
 			attribute.Int("http.response.status_code", sw.code()),
 		)

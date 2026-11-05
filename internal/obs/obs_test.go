@@ -152,3 +152,16 @@ func TestSetupTracingNoEndpoint(t *testing.T) {
 		t.Fatal("a bad endpoint was accepted")
 	}
 }
+
+func TestUnknownMethodsShareALabel(t *testing.T) {
+	m := obs.NewMetrics()
+	h := m.Wrap(http.NewServeMux())
+	for _, method := range []string{"BREW", "X-1", "X-2"} {
+		req := httptest.NewRequestWithContext(context.Background(), method, "/", nil)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	body := get(t, m.Handler(), "/metrics", nil).Body.String()
+	if strings.Contains(body, "BREW") || !strings.Contains(body, `logbook_http_requests_total{code="404",method="OTHER",route="unmatched"} 3`) {
+		t.Fatalf("unknown methods got their own labels:\n%s", body)
+	}
+}

@@ -41,8 +41,8 @@ func (m *Metrics) Wrap(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(sw, r)
 		rt := route(r)
-		m.requests.WithLabelValues(r.Method, rt, strconv.Itoa(sw.code())).Inc()
-		m.duration.WithLabelValues(r.Method, rt).Observe(time.Since(start).Seconds())
+		m.requests.WithLabelValues(method(r), rt, strconv.Itoa(sw.code())).Inc()
+		m.duration.WithLabelValues(method(r), rt).Observe(time.Since(start).Seconds())
 	})
 }
 

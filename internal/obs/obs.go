@@ -106,6 +106,17 @@ func (w *statusWriter) code() int {
 	return w.status
 }
 
+// method returns the request method, or OTHER for one net/http does not
+// define, so a client can't create unbounded metric labels.
+func method(r *http.Request) string {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace:
+		return r.Method
+	}
+	return "OTHER"
+}
+
 func route(r *http.Request) string {
 	if r.Pattern == "" {
 		return "unmatched"
@@ -119,7 +130,7 @@ func AccessLog(l *slog.Logger, next http.Handler) http.Handler {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(sw, r)
-		l.InfoContext(r.Context(), "request", "method", r.Method, "route", route(r), "status", sw.code(),
+		l.InfoContext(r.Context(), "request", "method", method(r), "route", route(r), "status", sw.code(),
 			"duration_ms", time.Since(start).Milliseconds())
 	})
 }
