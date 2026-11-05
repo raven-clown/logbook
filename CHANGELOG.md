@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-05
+
+### Fixed
+
+- A forgotten memory is no longer returned by `GET /v1/memories/{id}`, so its content stays hidden during the retention period.
+- `SQLITE_BUSY` and `SQLITE_LOCKED`, caused by another process writing to the same file, are reported as unavailable (503) instead of internal, and recording an API key's last use waits at most 500 ms.
+- The server has a 30 second read timeout, so a client that trickles a request body can't hold a connection open forever.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added
@@ -20,5 +28,6 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - JSON logs with request and trace IDs, Prometheus metrics, and OTLP trace export.
 - `GET /v1/memories/{id}` shows a memory with its links, verifications and history; `POST /v1/memories/{id}/links` links two memories.
 
-[Unreleased]: https://github.com/raven-clown/logbook/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/raven-clown/logbook/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/raven-clown/logbook/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/raven-clown/logbook/releases/tag/v0.1.0
