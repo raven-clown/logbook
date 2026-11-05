@@ -52,6 +52,8 @@ The design is `docs/design.md`, milestone issues are drafted in `docs/issues.md`
 
 - Follow CONTRIBUTING.md: tests with every change, a failing test first for a bug fix, table-driven tests, no network in unit tests, no bare `time.Sleep`.
 - Commit after every change, with a Conventional Commits message, and push it.
+- Work on a branch off `main` named `feat/<topic>`, `fix/<topic>`, `ci/<topic>` or `docs/<topic>`, never on `main` itself. When the work is done, open a pull request with a Conventional Commits title and a plain description.
+- Merge only when every required check is green: the three test jobs, coverage, lint, analyze, dependency review and pr title. A macOS job cancelled by the runner queue is not a failure; rerun it with `gh run rerun <id> --failed`. Then merge with `gh pr merge <n> --squash --delete-branch --admin` and delete the local branch. Never merge a red pull request and never force-push `main`.
 - Never mention AI, assistants or code generation in code, comments, docs, commit messages, pull requests or issues.
 - Never add `Co-Authored-By`, `Generated with` or similar trailers.
 - No em-dashes. Keep comments short and about why.
