@@ -1,15 +1,29 @@
-# logbook
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/header-dark.svg">
+  <img src="docs/assets/header-light.svg" alt="logbook: agent memory. Shared memory your agents can trust." width="100%">
+</picture>
 
-[![ci](https://github.com/raven-clown/logbook/actions/workflows/ci.yml/badge.svg)](https://github.com/raven-clown/logbook/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/release/raven-clown/logbook)](https://github.com/raven-clown/logbook/releases)
-[![Go Reference](https://pkg.go.dev/badge/github.com/raven-clown/logbook.svg)](https://pkg.go.dev/github.com/raven-clown/logbook)
-[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+<div align="center">
+
+[![ci](https://img.shields.io/github/actions/workflow/status/raven-clown/logbook/ci.yml?branch=main&style=for-the-badge&label=ci&logo=githubactions&logoColor=white)](https://github.com/raven-clown/logbook/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/raven-clown/logbook?style=for-the-badge&color=10B981)](https://github.com/raven-clown/logbook/releases)
+[![Go Reference](https://img.shields.io/badge/go-reference-10B981?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/raven-clown/logbook)
+[![license](https://img.shields.io/badge/license-Apache--2.0-10B981?style=for-the-badge)](LICENSE)
+
+</div>
 
 Shared memory for agents. One agent writes down what it learned, another one finds it later, and everyone can see whether it was checked, corrected or has gone out of date.
 
 logbook is an MCP server (stdio and Streamable HTTP) with the same operations over REST. It is a single Go binary with embedded SQLite, and it runs on Postgres when a team needs more. It works without any model, and gets semantic search and fact extraction when you point it at an OpenAI-compatible endpoint.
 
 > **Status: early, [v0.1.1](https://github.com/raven-clown/logbook/releases/tag/v0.1.1).** Milestones 1 and 2 are released: the memory core with trust states, corrections and staleness, MCP over stdio and Streamable HTTP, REST under `/v1/`, API keys and role bindings, and metrics. The admin API is next. The design is in [docs/design.md](docs/design.md). Watch the repository or pick up an issue if you want to help shape it.
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+  <img src="docs/assets/how-it-works-light.svg" alt="A timeline of memories: agent A writes one, agent B recalls and verifies it, agent C writes a contradicting one that is marked disputed, and an old memory goes stale." width="100%">
+</picture>
 
 ## Why another memory server
 
