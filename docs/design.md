@@ -435,6 +435,7 @@ The YAML file is optional apart from the bootstrap keys. Everything else can liv
 
 ```yaml
 listen_addr: ":8420"
+public_url: ""          # the address clients use; turns on the OAuth protected resource metadata for /mcp
 database:
   driver: "sqlite"
   dsn: "./logbook.db"
@@ -519,6 +520,15 @@ Release:
 15. `org_id` on every runtime table, always `default` in v1.
 16. No UI in this repository. Human review in v1 is the CLI `review` command and, later, the mothership console.
 17. A hand-written OpenAPI 3.0 file is the source of truth for `/v1/` and `/admin/v1/`, checked by tests.
+
+Decided while building milestone 2:
+
+18. A user scope id is any printable text without spaces, up to 255 bytes, because OIDC subjects are opaque (`auth0|123`, URLs). Project and team ids keep the narrower rule.
+19. An API key caller's subject is `key:<name>`. A JWT whose subject starts with `key:` or is `local` (the stdio identity) is rejected, so it can't read those user scopes. Deleting a key deletes its bindings.
+20. OIDC discovery runs on the first JWT and again after a failure. Until it works, JWT callers get `unavailable` and API key callers are not affected, so logbook starts while the identity provider is down.
+21. With `public_url` and an issuer set, logbook serves the OAuth protected resource metadata for `/mcp`, and 401 responses point to it in `WWW-Authenticate`.
+22. MCP over Streamable HTTP runs without sessions, so any replica can answer any request.
+23. Until the admin API lands, keys and bindings are managed with `logbook key` and `logbook binding` on the server's database.
 
 ## 13. Settled questions
 

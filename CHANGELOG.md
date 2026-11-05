@@ -11,3 +11,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - MCP tools `remember`, `recall`, `verify`, `forget` and `list_memories`.
 - JSONL import and export.
 - The `logbook` command: `mcp`, `remember`, `recall`, `list`, `verify`, `forget`, `import`, `export`, `migrate`, `version`.
+- `logbook serve`: MCP over Streamable HTTP at `/mcp`, REST under `/v1/`, `/healthz`, `/readyz` and `/metrics`.
+- Sign-in with OIDC tokens or logbook API keys, role bindings for teams and projects, and a restricted project mode.
+- `logbook key` and `logbook binding` to manage API keys and bindings.
+- `--server` and `--token` on the memory commands to work against a running server.
+- JSON logs with request and trace IDs, Prometheus metrics, and OTLP trace export.
+- `GET /v1/memories/{id}` shows a memory with its links, verifications and history; `POST /v1/memories/{id}/links` links two memories.
