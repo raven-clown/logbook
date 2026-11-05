@@ -26,8 +26,14 @@ type httpInfoKey struct{}
 // HTTPHandler serves s over Streamable HTTP, without sessions, so any replica
 // can answer any request. Requests need a caller from identity in their context.
 func HTTPHandler(s *server.MCPServer, o HTTPOptions) http.Handler {
+	// Localhost protection is off because every request needs a bearer token,
+	// which a rebinding page can't send, and it breaks a reverse proxy on the
+	// same host. The GET stream is off because a stateless server has nothing
+	// to send on it, and an open one would hold up shutdown.
 	streamable := server.NewStreamableHTTPServer(s,
 		server.WithStateLess(true),
+		server.WithDisableLocalhostProtection(true),
+		server.WithDisableStreaming(true),
 		server.WithMaxRequestBodyBytes(httpx.MaxBody),
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			if info, ok := r.Context().Value(httpInfoKey{}).(httpInfo); ok {

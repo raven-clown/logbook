@@ -231,3 +231,59 @@ func TestReadyzDatabaseDown(t *testing.T) {
 		t.Fatalf("readyz %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestServeMCPBehindProxy(t *testing.T) {
+	c := newCLI(t)
+	key := createKey(t, c.dsn(), "ci")
+	s := startServe(t, c.env)
+	res, body := s.do(t, http.MethodPost, "/mcp", "", `{}`)
+	if res.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(res.Header.Get("WWW-Authenticate"), "Bearer") || !strings.Contains(body, "unauthenticated") {
+		t.Fatalf("mcp without a token: %d %v %s", res.StatusCode, res.Header, body)
+	}
+	init := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"proxy-test","version":"1"}}}`
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, s.base+"/mcp", strings.NewReader(init))
+	req.Host = "logbook.example.com"
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	got, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(got.Body)
+	_ = got.Body.Close()
+	if got.StatusCode != http.StatusOK {
+		t.Fatalf("mcp through a proxy that keeps the Host header: %d %s", got.StatusCode, b)
+	}
+}
+
+func TestServeStopsWithOpenStream(t *testing.T) {
+	c := newCLI(t)
+	key := createKey(t, c.dsn(), "ci")
+	s := startServe(t, c.env)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.base+"/mcp", nil)
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Accept", "text/event-stream")
+	opened := make(chan struct{})
+	go func() {
+		res, err := http.DefaultClient.Do(req)
+		close(opened)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, res.Body)
+			_ = res.Body.Close()
+		}
+	}()
+	select {
+	case <-opened:
+	case <-time.After(5 * time.Second):
+	}
+	start := time.Now()
+	if code := s.stop(); code != 0 {
+		t.Fatalf("serve exited %d with a stream open: %s", code, s.logs.String())
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("shutdown took %s", d)
+	}
+}
