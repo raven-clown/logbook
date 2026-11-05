@@ -1,10 +1,15 @@
 # logbook
 
+[![ci](https://github.com/raven-clown/logbook/actions/workflows/ci.yml/badge.svg)](https://github.com/raven-clown/logbook/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/raven-clown/logbook)](https://github.com/raven-clown/logbook/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/raven-clown/logbook.svg)](https://pkg.go.dev/github.com/raven-clown/logbook)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Shared memory for agents. One agent writes down what it learned, another one finds it later, and everyone can see whether it was checked, corrected or has gone out of date.
 
 logbook is an MCP server (stdio and Streamable HTTP) with the same operations over REST. It is a single Go binary with embedded SQLite, and it runs on Postgres when a team needs more. It works without any model, and gets semantic search and fact extraction when you point it at an OpenAI-compatible endpoint.
 
-> **Status: in development.** Nothing is released yet. The design is settled in [docs/design.md](docs/design.md). The core and the HTTP server work today; the admin API is next. Watch the repository or pick up an issue if you want to help shape it.
+> **Status: early, [v0.1.1](https://github.com/raven-clown/logbook/releases/tag/v0.1.1).** Milestones 1 and 2 are released: the memory core with trust states, corrections and staleness, MCP over stdio and Streamable HTTP, REST under `/v1/`, API keys and role bindings, and metrics. The admin API is next. The design is in [docs/design.md](docs/design.md). Watch the repository or pick up an issue if you want to help shape it.
 
 ## Why another memory server
 
@@ -35,7 +40,18 @@ Both are good projects, and engram in particular already thinks hard about stale
 
 There is no paid edition and no license key. OIDC sign-in, roles, the audit log, Postgres with several replicas and the full admin API are all in this Apache-2.0 build. Nothing is held back for a hosted version.
 
-## How it will look
+## Install
+
+With Go 1.26 or later:
+
+```shell
+go install github.com/raven-clown/logbook/cmd/logbook@latest
+logbook version
+```
+
+Prebuilt binaries for Linux, macOS and Windows and a container image are planned.
+
+## Use it from an MCP client
 
 Add it to any MCP client:
 
@@ -121,8 +137,8 @@ None of them is required.
 
 ## Roadmap
 
-1. **Core:** memory model, trust states, corrections, staleness, SQLite with migrations, MCP over stdio, CLI.
-2. **Server:** Streamable HTTP, REST under `/v1/`, OIDC and API keys, role bindings, metrics and traces.
+1. **Core** (released in v0.1.0): memory model, trust states, corrections, staleness, SQLite with migrations, MCP over stdio, CLI.
+2. **Server** (released in v0.1.0): Streamable HTTP, REST under `/v1/`, OIDC and API keys, role bindings, metrics and traces.
 3. **Admin API:** settings, API keys, access, audit, usage counts and jobs under `/admin/v1/`, with an OpenAPI file, so a web console can run logbook end to end.
 4. **Postgres:** pgvector, several replicas.
 5. **Models:** embeddings, fact extraction and contradiction checks through any OpenAI-compatible endpoint.
@@ -134,6 +150,8 @@ New contributors are welcome, and there is no closed part of the code.
 - Issues labeled `good first issue` are small and say exactly which files to change.
 - Issues labeled `adapter` add a backend, an embedder, an importer or a staleness rule. Each one is self-contained, and the plugin interfaces are designed for them.
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and how pull requests are merged.
+- Found a bug, or want something new? Open an issue with one of the [issue forms](https://github.com/raven-clown/logbook/issues/new/choose). Each one says what to include.
+- Pull requests come with a template that lists what reviewers check first in this project, so you know what to cover before you open one.
 
 Ideas the design already has a slot for: a Qdrant vector index, importers for mem0, engram and Obsidian, and a staleness rule that flags a memory when a file it refers to changes in git.
 
