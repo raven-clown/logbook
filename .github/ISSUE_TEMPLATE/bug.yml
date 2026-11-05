@@ -1,30 +1,132 @@
-name: Bug
-description: Something doesn't work the way the docs say.
+name: Bug report
+description: Something in logbook doesn't work the way the docs say.
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Before you start**
+        - Search the [open issues](https://github.com/raven-clown/logbook/issues) first. If one matches, add what you know there.
+        - A security problem goes to a [private report](https://github.com/raven-clown/logbook/security/advisories/new), not here.
+
+        **How to write it**
+        - Title: say what goes wrong in one sentence, such as "Streamed responses drop every line after the first in multiline events".
+        - One bug per issue.
+        - Describe what you saw, not your guess at the cause. If you have a guess, add it at the end.
+        - Paste text, not screenshots, for commands, config and logs.
+        - Remove tokens, API keys and private hostnames before you paste.
   - type: input
     id: version
     attributes:
       label: Version
-      description: Output of `<project> version`, or the commit you built.
+      description: "Output of `logbook version`, or the commit you built."
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: "How did you install it?"
+      options:
+        - Release binary
+        - go install
+        - Built from source
+        - Go library in my own program
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage
+      options:
+        - SQLite (default)
+        - Postgres
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: "How do you reach logbook?"
+      options:
+        - MCP over stdio (logbook mcp)
+        - MCP over HTTP (/mcp)
+        - REST (/v1/)
+        - Admin API (/admin/v1/)
+        - CLI
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client
+      description: The MCP client or HTTP client and its version, such as Claude Code 2.1, Cursor 0.50 or curl.
+    validations:
+      required: true
+  - type: dropdown
+    id: embeddings
+    attributes:
+      label: Embeddings
+      options:
+        - Not configured
+        - transponder
+        - Another OpenAI-compatible endpoint
+  - type: textarea
+    id: happened
+    attributes:
+      label: "What happened?"
+      description: "What you saw: the output, the response, the error message."
     validations:
       required: true
   - type: textarea
-    id: what
+    id: expected
     attributes:
-      label: What happened, and what did you expect?
+      label: "What did you expect?"
+      description: What should have happened instead, and where the docs say so if they do.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: How to reproduce
-      description: The smallest config and steps that show it.
+      label: Steps to reproduce
+      description: The smallest set of steps that shows it, with the exact commands or requests.
+      placeholder: |
+        1. Start with the config below
+        2. Run ...
+        3. See ...
     validations:
       required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: The smallest config that shows it, with secrets removed.
+      render: yaml
   - type: textarea
     id: logs
     attributes:
       label: Logs
-      description: Remove tokens and other secrets first.
+      description: The lines around the problem, with secrets removed.
       render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched the open issues and this isn't one of them
+          required: true
+        - label: I removed tokens, keys and other secrets from what I pasted
+          required: true
