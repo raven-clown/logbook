@@ -29,7 +29,11 @@ func (a *app) mcp(args []string) error {
 	defer func() { _ = s.store.Close() }()
 	ctx, stop := signal.NotifyContext(a.ctx, os.Interrupt)
 	defer stop()
-	srv := mcpserver.New(s.svc, func(context.Context) memory.Principal { return s.principal(memory.ChannelMCP) }, logbook.Version)
+	srv := mcpserver.New(s.svc, func(ctx context.Context) memory.Principal {
+		p := s.principal(memory.ChannelMCP)
+		p.Client = mcpserver.SessionClient(ctx)
+		return p
+	}, logbook.Version)
 	stdio := server.NewStdioServer(srv)
 	stdio.SetErrorLogger(log.New(a.stderr, "", 0))
 	return stdio.Listen(ctx, a.stdin, a.stdout)

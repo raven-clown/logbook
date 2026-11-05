@@ -244,6 +244,9 @@ func TestRunMCP(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("mcp did not exit after stdin closed")
 	}
+	if out := c.ok("list", "--project", "demo", "--json"); !strings.Contains(out, `"client": "test"`) {
+		t.Fatalf("the MCP client name was not recorded: %s", out)
+	}
 }
 
 func TestRunEscapesTerminalControls(t *testing.T) {

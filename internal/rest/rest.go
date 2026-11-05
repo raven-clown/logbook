@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
-	"unicode"
 
 	"github.com/raven-clown/logbook/importer/jsonl"
 	"github.com/raven-clown/logbook/internal/httpx"
@@ -51,32 +49,6 @@ func (a *api) with(h handler) http.HandlerFunc {
 	}
 }
 
-// ClientName is the first 100 bytes of the User-Agent, without control characters.
-func ClientName(r *http.Request) string {
-	ua := strings.Map(func(c rune) rune {
-		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
-			return -1
-		}
-		return c
-	}, r.UserAgent())
-	if len(ua) > 100 {
-		ua = strings.ToValidUTF8(ua[:100], "")
-	}
-	return ua
-}
-
-// Project returns the X-Project header, or def when it is absent.
-func Project(r *http.Request, def string) (string, error) {
-	p := r.Header.Get("X-Project")
-	if p == "" {
-		return def, nil
-	}
-	if _, err := memory.ParseScope("project:" + p); err != nil {
-		return "", memory.Errorf(memory.CodeInvalidArgument, "X-Project", "X-Project %q is not a valid project name", p)
-	}
-	return p, nil
-}
-
 func (a *api) principal(r *http.Request) (memory.Principal, error) {
 	c, ok := identity.FromContext(r.Context())
 	if !ok {
@@ -84,9 +56,9 @@ func (a *api) principal(r *http.Request) (memory.Principal, error) {
 	}
 	p := c.Principal
 	p.Channel = memory.ChannelREST
-	p.Client = ClientName(r)
+	p.Client = httpx.ClientName(r)
 	var err error
-	p.Project, err = Project(r, a.DefaultProject)
+	p.Project, err = httpx.Project(r, a.DefaultProject)
 	return p, err
 }
 
