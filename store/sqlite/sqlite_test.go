@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/raven-clown/logbook/admin"
 	"github.com/raven-clown/logbook/memory"
 	"github.com/raven-clown/logbook/store"
 	"github.com/raven-clown/logbook/store/sqlite"
@@ -30,6 +31,16 @@ func openTemp(t *testing.T) memory.Store {
 
 func TestConformance(t *testing.T) {
 	storetest.Run(t, openTemp)
+}
+
+func TestAdminConformance(t *testing.T) {
+	storetest.RunAdmin(t, func(t *testing.T) admin.Store {
+		s, ok := openTemp(t).(admin.Store)
+		if !ok {
+			t.Fatal("the sqlite store is not an admin.Store")
+		}
+		return s
+	})
 }
 
 func TestOpenWindowsStylePath(t *testing.T) {
