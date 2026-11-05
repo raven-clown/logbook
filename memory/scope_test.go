@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/raven-clown/logbook/memory"
@@ -111,5 +112,64 @@ func TestStatusActive(t *testing.T) {
 		if got := s.Active(); got != want {
 			t.Errorf("%s.Active() = %v, want %v", s, got, want)
 		}
+	}
+}
+
+func TestRestrictedProjects(t *testing.T) {
+	open := memory.Principal{Subject: "alice"}
+	restricted := memory.Principal{Subject: "alice", RestrictProjects: true, Projects: []string{"api"}}
+	for _, tt := range []struct {
+		p     memory.Principal
+		scope string
+		want  bool
+	}{
+		{open, "project:anything", true},
+		{restricted, "project:api", true},
+		{restricted, "project:web", false},
+		{memory.Principal{Subject: "alice", RestrictProjects: true, AllProjects: true}, "project:web", true},
+	} {
+		sc, _ := memory.ParseScope(tt.scope)
+		if got := tt.p.CanRead(sc); got != tt.want || tt.p.CanWrite(sc) != tt.want {
+			t.Fatalf("%+v CanRead(%s) = %v, want %v", tt.p, tt.scope, got, tt.want)
+		}
+	}
+}
+
+func TestWildcardAccess(t *testing.T) {
+	p := memory.Principal{Subject: "alice", AllTeams: true}
+	if !p.CanRead(memory.Scope{Type: memory.ScopeTeam, ID: "sales"}) {
+		t.Fatal("AllTeams cannot read team:sales")
+	}
+	if p.CanRead(memory.Scope{Type: memory.ScopeUser, ID: "bob"}) {
+		t.Fatal("AllTeams reads another user's scope")
+	}
+}
+
+func TestReadableScopesSkipsUnreadableProject(t *testing.T) {
+	p := memory.Principal{Subject: "alice", Project: "web", RestrictProjects: true, Projects: []string{"api"}, Teams: []string{"ops"}}
+	got := p.ReadableScopes("", "")
+	if len(got) != 2 || got[0] != "user:alice" || got[1] != "team:ops" {
+		t.Fatalf("ReadableScopes = %v", got)
+	}
+	if got := p.ReadableScopes("api", ""); len(got) != 3 || got[1] != "project:api" {
+		t.Fatalf("ReadableScopes(api) = %v", got)
+	}
+}
+
+func TestParseUserScopeWide(t *testing.T) {
+	for _, in := range []string{"user:auth0|123", "user:https://idp.example.com/u/7", "user:key:ci"} {
+		sc, err := memory.ParseScope(in)
+		if err != nil || sc.Type != memory.ScopeUser || sc.String() != in {
+			t.Fatalf("ParseScope(%q) = %+v, %v", in, sc, err)
+		}
+	}
+	long := "user:" + strings.Repeat("a", 256)
+	for _, in := range []string{"user:a b", "user:a\u0007", "user:a" + string(rune(0x202e)), long, "project:a|b", "team:x:y"} {
+		if _, err := memory.ParseScope(in); memory.CodeOf(err) != memory.CodeInvalidArgument {
+			t.Fatalf("ParseScope(%q) accepted", in)
+		}
+	}
+	if _, err := memory.ParseScope("user:" + strings.Repeat("a", 255)); err != nil {
+		t.Fatalf("255 bytes rejected: %v", err)
 	}
 }
