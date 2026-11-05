@@ -62,8 +62,10 @@ func New(o Options) *Resolver {
 // Local is the identity of the stdio server and the local commands: the
 // subject local, an admin.
 func Local() Caller {
-	return Caller{Principal: memory.Principal{OrgID: memory.DefaultOrg, Subject: "local"}, Roles: []admin.Role{admin.RoleAdmin}}
+	return Caller{Principal: memory.Principal{OrgID: memory.DefaultOrg, Subject: localSubject}, Roles: []admin.Role{admin.RoleAdmin}}
 }
+
+const localSubject = "local"
 
 // touchEvery limits how often a key's last use is written.
 const touchEvery = time.Minute
@@ -93,7 +95,9 @@ func (r *Resolver) Authenticate(ctx context.Context, token string) (Caller, erro
 		return Caller{}, err
 	}
 	sub, _ := claims["sub"].(string)
-	if sub == "" || strings.HasPrefix(sub, "key:") {
+	// key: subjects and the local subject belong to other authenticators, and
+	// taking them would read their user scopes.
+	if sub == "" || sub == localSubject || strings.HasPrefix(sub, "key:") {
 		return Caller{}, unauthenticated("the token's subject %q is not usable", sub)
 	}
 	if _, err := memory.ParseScope("user:" + sub); err != nil {

@@ -190,6 +190,7 @@ func TestJWTRejected(t *testing.T) {
 		{"expired", p.token(t, p.claims("alice", map[string]any{"exp": now.Add(-time.Hour).Unix()}))},
 		{"unknown signing key", sign(t, other, "k1", p.claims("alice", nil))},
 		{"key subject", p.token(t, p.claims("key:ci", nil))},
+		{"local subject", p.token(t, p.claims("local", nil))},
 		{"empty subject", p.token(t, p.claims("", nil))},
 		{"bad subject", p.token(t, p.claims("a b", nil))},
 	} {
