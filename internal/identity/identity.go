@@ -73,6 +73,8 @@ const localSubject = "local"
 // touchEvery limits how often a key's last use is written.
 const touchEvery = time.Minute
 
+const touchTimeout = 500 * time.Millisecond
+
 func unauthenticated(format string, args ...any) error {
 	return memory.Errorf(memory.CodeUnauthenticated, "", format, args...)
 }
@@ -123,7 +125,11 @@ func (r *Resolver) apiKey(ctx context.Context, token string) (Caller, error) {
 		return Caller{}, err
 	}
 	if now := r.o.Now(); now.Sub(k.LastUsedAt) >= touchEvery {
-		if err := r.o.Store.TouchAPIKey(ctx, k.OrgID, k.ID, now); err != nil {
+		// A busy database must not hold up the request for its whole busy timeout.
+		tctx, cancel := context.WithTimeout(ctx, touchTimeout)
+		err := r.o.Store.TouchAPIKey(tctx, k.OrgID, k.ID, now)
+		cancel()
+		if err != nil {
 			slog.WarnContext(ctx, "recording API key use failed", "key", k.Name, "err", err)
 		}
 	}
