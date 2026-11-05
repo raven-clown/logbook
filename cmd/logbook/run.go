@@ -19,6 +19,7 @@ import (
 const usage = `usage: logbook <command> [flags]
 
 commands:
+  serve                            serve MCP at /mcp, REST at /v1/, health and metrics over HTTP
   mcp                              serve the memory tools over MCP on stdin and stdout
   remember <content>               store a memory
   recall <query>                   search memories
@@ -52,7 +53,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 2
 	}
 	commands := map[string]func([]string) error{
-		"mcp": a.mcp, "remember": a.remember, "recall": a.recall, "list": a.list, "verify": a.verify,
+		"serve": a.serve, "mcp": a.mcp, "remember": a.remember, "recall": a.recall, "list": a.list, "verify": a.verify,
 		"forget": a.forget, "import": a.importCmd, "export": a.export, "migrate": a.migrate, "version": a.version,
 	}
 	cmd, ok := commands[args[0]]

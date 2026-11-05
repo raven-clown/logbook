@@ -73,6 +73,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return &Store{db: db, q: db}, nil
 }
 
+// Ping checks that the database answers.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}
+
 // Close closes the database.
 func (s *Store) Close() error {
 	return s.db.Close()
