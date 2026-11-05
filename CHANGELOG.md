@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-05
+
 ### Added
 
 - SQLite storage with full-text search and schema migrations that run at startup.
@@ -17,3 +19,6 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - `--server` and `--token` on the memory commands to work against a running server.
 - JSON logs with request and trace IDs, Prometheus metrics, and OTLP trace export.
 - `GET /v1/memories/{id}` shows a memory with its links, verifications and history; `POST /v1/memories/{id}/links` links two memories.
+
+[Unreleased]: https://github.com/raven-clown/logbook/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/raven-clown/logbook/releases/tag/v0.1.0
