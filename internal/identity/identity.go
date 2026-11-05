@@ -39,9 +39,12 @@ type Options struct {
 
 // Resolver authenticates tokens.
 type Resolver struct {
-	o    Options
-	mu   sync.Mutex
-	oidc *verifier
+	o           Options
+	mu          sync.Mutex
+	oidc        *verifier
+	discovering bool
+	failedAt    time.Time
+	failErr     error
 }
 
 // New returns a Resolver. It does not contact the identity provider until the

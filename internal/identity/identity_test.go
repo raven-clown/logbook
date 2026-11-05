@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -24,10 +25,15 @@ import (
 
 var now = time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
 
+// clock is the resolver's time; tests that move it restore it.
+var clock = now
+
 type idp struct {
 	srv  *httptest.Server
 	key  *rsa.PrivateKey
 	down atomic.Bool
+	hits atomic.Int32
+	gate chan struct{}
 }
 
 func newIDP(t *testing.T) *idp {
@@ -39,6 +45,10 @@ func newIDP(t *testing.T) *idp {
 	p := &idp{key: key}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		p.hits.Add(1)
+		if p.gate != nil {
+			<-p.gate
+		}
 		if p.down.Load() {
 			http.Error(w, "down", http.StatusServiceUnavailable)
 			return
@@ -94,7 +104,8 @@ func openStore(t *testing.T) *sqlite.Store {
 
 func resolver(t *testing.T, st admin.Store, p *idp, mutate func(*identity.Options)) *identity.Resolver {
 	t.Helper()
-	o := identity.Options{Store: st, ProjectMode: "open", Now: func() time.Time { return now }, OIDC: config.OIDC{Audience: "logbook", TeamsClaim: "groups"}}
+	clock = now
+	o := identity.Options{Store: st, ProjectMode: "open", Now: func() time.Time { return clock }, OIDC: config.OIDC{Audience: "logbook", TeamsClaim: "groups"}}
 	if p != nil {
 		o.OIDC.Issuer = p.srv.URL
 		o.HTTPClient = p.srv.Client()
@@ -221,8 +232,38 @@ func TestIssuerDownThenUp(t *testing.T) {
 		t.Fatalf("key caller while the issuer is down: %v", err)
 	}
 	p.down.Store(false)
+	_, err = r.Authenticate(context.Background(), tok)
+	wantCode(t, err, memory.CodeUnavailable)
+	if p.hits.Load() != 1 {
+		t.Fatalf("discovery ran %d times within the retry wait", p.hits.Load())
+	}
+	clock = clock.Add(6 * time.Second)
 	if _, err := r.Authenticate(context.Background(), tok); err != nil {
 		t.Fatalf("after the issuer came back: %v", err)
+	}
+}
+
+func TestDiscoveryDoesNotQueue(t *testing.T) {
+	p := newIDP(t)
+	p.gate = make(chan struct{})
+	r := resolver(t, openStore(t), p, nil)
+	tok := p.token(t, p.claims("alice", nil))
+	first := make(chan error, 1)
+	go func() {
+		_, err := r.Authenticate(context.Background(), tok)
+		first <- err
+	}()
+	for p.hits.Load() == 0 {
+		runtime.Gosched()
+	}
+	_, err := r.Authenticate(context.Background(), tok)
+	wantCode(t, err, memory.CodeUnavailable)
+	close(p.gate)
+	if err := <-first; err != nil {
+		t.Fatalf("the caller that ran discovery: %v", err)
+	}
+	if _, err := r.Authenticate(context.Background(), tok); err != nil {
+		t.Fatalf("after discovery: %v", err)
 	}
 }
 
