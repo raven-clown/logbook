@@ -103,18 +103,24 @@ func DecodeJSON(r *http.Request, v any) error {
 	return nil
 }
 
-// ClientName is the first 100 bytes of the User-Agent, without control characters.
+// ClientName is the User-Agent, cleaned by CleanClientName.
 func ClientName(r *http.Request) string {
-	ua := strings.Map(func(c rune) rune {
+	return CleanClientName(r.UserAgent())
+}
+
+// CleanClientName drops control and format characters from a client name and
+// cuts it to 100 bytes, since any client can send any name.
+func CleanClientName(name string) string {
+	name = strings.Map(func(c rune) rune {
 		if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) {
 			return -1
 		}
 		return c
-	}, r.UserAgent())
-	if len(ua) > 100 {
-		ua = strings.ToValidUTF8(ua[:100], "")
+	}, name)
+	if len(name) > 100 {
+		name = strings.ToValidUTF8(name[:100], "")
 	}
-	return ua
+	return name
 }
 
 // Project returns the X-Project header, or def when it is absent.

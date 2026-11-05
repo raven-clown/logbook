@@ -65,10 +65,10 @@ func HTTPPrincipal(ctx context.Context) memory.Principal {
 }
 
 // SessionClient returns the client name the MCP client sent when it
-// initialised, or "".
+// initialised, cleaned, or "".
 func SessionClient(ctx context.Context) string {
 	if s, ok := server.ClientSessionFromContext(ctx).(server.SessionWithClientInfo); ok {
-		return s.GetClientInfo().Name
+		return httpx.CleanClientName(s.GetClientInfo().Name)
 	}
 	return ""
 }

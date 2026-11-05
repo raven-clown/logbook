@@ -166,6 +166,8 @@ func TestUnknownMethodsShareALabel(t *testing.T) {
 	}
 }
 
+type copyKey struct{}
+
 func TestRoutesThroughCopies(t *testing.T) {
 	rec := tracetest.NewSpanRecorder()
 	old := otel.GetTracerProvider()
@@ -176,7 +178,7 @@ func TestRoutesThroughCopies(t *testing.T) {
 	mux.HandleFunc("GET /v1/memories/{id}", func(http.ResponseWriter, *http.Request) {})
 	copying := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), struct{}{}, 1)))
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), copyKey{}, 1)))
 		})
 	}
 	h := obs.Trace(m.Wrap(copying(obs.Routes(mux))))

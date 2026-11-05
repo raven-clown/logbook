@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,11 @@ func startHTTP(t *testing.T) *httpEnv {
 
 func (e *httpEnv) client(t *testing.T, headers map[string]string) *client.Client {
 	t.Helper()
+	return e.namedClient(t, "agent-test", headers)
+}
+
+func (e *httpEnv) namedClient(t *testing.T, name string, headers map[string]string) *client.Client {
+	t.Helper()
 	c, err := client.NewStreamableHttpClient(e.url, transport.WithHTTPHeaders(headers))
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +62,7 @@ func (e *httpEnv) client(t *testing.T, headers map[string]string) *client.Client
 	}
 	req := mcp.InitializeRequest{}
 	req.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	req.Params.ClientInfo = mcp.Implementation{Name: "agent-test", Version: "1"}
+	req.Params.ClientInfo = mcp.Implementation{Name: name, Version: "1"}
 	if _, err := c.Initialize(ctx, req); err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +157,17 @@ func TestHTTPClientName(t *testing.T) {
 	callHTTP(t, c, "remember", map[string]any{"content": "client names are recorded"}, &rem)
 	m, _ := e.store.Get(context.Background(), memory.DefaultOrg, rem.Memories[0].ID)
 	if m.Author.Client != "agent-test" {
+		t.Fatalf("client = %q", m.Author.Client)
+	}
+}
+
+func TestHTTPClientNameCleaned(t *testing.T) {
+	e := startHTTP(t)
+	c := e.namedClient(t, "evil[2J‮"+strings.Repeat("x", 300), map[string]string{"X-Test-Subject": "alice"})
+	var rem memory.RememberResult
+	callHTTP(t, c, "remember", map[string]any{"content": "client names are cleaned"}, &rem)
+	m, _ := e.store.Get(context.Background(), memory.DefaultOrg, rem.Memories[0].ID)
+	if strings.ContainsAny(m.Author.Client, "‮") || len(m.Author.Client) > 100 || !strings.HasPrefix(m.Author.Client, "evil[2J") {
 		t.Fatalf("client = %q", m.Author.Client)
 	}
 }
