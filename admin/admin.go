@@ -108,6 +108,8 @@ type Store interface {
 	APIKeyByHash(ctx context.Context, orgID, hash string) (*APIKey, error)
 	// ListAPIKeys returns keys oldest first.
 	ListAPIKeys(ctx context.Context, orgID string) ([]*APIKey, error)
+	// DeleteAPIKey also deletes the bindings of key:<name>, so a new key with
+	// the same name starts with no grants.
 	DeleteAPIKey(ctx context.Context, orgID, id string) error
 	TouchAPIKey(ctx context.Context, orgID, id string, at time.Time) error
 	// CreateBinding returns conflict when the same principal, role and target exist.

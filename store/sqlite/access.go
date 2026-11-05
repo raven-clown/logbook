@@ -94,8 +94,22 @@ func (s *Store) ListAPIKeys(ctx context.Context, orgID string) ([]*admin.APIKey,
 
 // DeleteAPIKey implements admin.Store.
 func (s *Store) DeleteAPIKey(ctx context.Context, orgID, id string) error {
-	res, err := s.q.ExecContext(ctx, "DELETE FROM api_keys WHERE org_id = ? AND id = ?", orgID, id)
-	return deleted(res, err, "key", id)
+	return s.Tx(ctx, func(tx memory.Store) error {
+		q := tx.(*Store).q
+		var name string
+		err := q.QueryRowContext(ctx, "SELECT name FROM api_keys WHERE org_id = ? AND id = ?", orgID, id).Scan(&name)
+		if errors.Is(err, sql.ErrNoRows) {
+			return memory.Errorf(memory.CodeNotFound, "id", "key %s not found", id)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, "DELETE FROM api_keys WHERE org_id = ? AND id = ?", orgID, id); err != nil {
+			return err
+		}
+		_, err = q.ExecContext(ctx, "DELETE FROM bindings WHERE org_id = ? AND principal = ?", orgID, "key:"+name)
+		return err
+	})
 }
 
 // TouchAPIKey implements admin.Store.

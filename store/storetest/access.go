@@ -18,6 +18,7 @@ func RunAdmin(t *testing.T, open func(t *testing.T) admin.Store) {
 		{"KeyRoundTrip", keyRoundTrip},
 		{"KeyNameTaken", keyNameTaken},
 		{"KeyDelete", keyDelete},
+		{"KeyDeleteDropsBindings", keyDeleteDropsBindings},
 		{"KeyTouch", keyTouch},
 		{"BindingRoundTrip", bindingRoundTrip},
 		{"BindingDuplicate", bindingDuplicate},
@@ -205,5 +206,27 @@ func adminOrgSeparation(t *testing.T, s admin.Store) {
 	}
 	if err := s.DeleteBinding(ctx, memory.DefaultOrg, "bnd_1"); memory.CodeOf(err) != memory.CodeNotFound {
 		t.Fatalf("binding delete crossed orgs: %v", err)
+	}
+}
+
+func keyDeleteDropsBindings(t *testing.T, s admin.Store) {
+	ctx := context.Background()
+	if err := s.CreateAPIKey(ctx, newKey(memory.DefaultOrg, "key_1", "ci")); err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []*admin.Binding{
+		newBinding("bnd_1", "key:ci", admin.RoleMember, "team:platform"),
+		newBinding("bnd_2", "key:ci2", admin.RoleMember, "team:platform"),
+	} {
+		if err := s.CreateBinding(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.DeleteAPIKey(ctx, memory.DefaultOrg, "key_1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Bindings(ctx, memory.DefaultOrg, nil)
+	if err != nil || len(got) != 1 || got[0].Principal != "key:ci2" {
+		t.Fatalf("bindings after deleting key ci = %v, %v", got, err)
 	}
 }
