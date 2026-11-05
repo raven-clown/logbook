@@ -124,3 +124,14 @@ func TestJSONLLongLine(t *testing.T) {
 		t.Fatalf("long line: %+v, %v", report, err)
 	}
 }
+
+func TestWriteEscapesControls(t *testing.T) {
+	var buf bytes.Buffer
+	content := "x" + string([]rune{0x9b, 0x202e}) + "y"
+	if err := jsonl.Write(&buf, memory.Record{Memory: memory.Memory{ID: "mem_1", Content: content}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(buf.String(), string([]rune{0x9b, 0x202e})) {
+		t.Fatalf("raw control runes in %q", buf.String())
+	}
+}

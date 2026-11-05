@@ -139,9 +139,9 @@ func TestVerifyForgetListOverMCP(t *testing.T) {
 	if len(list.Items) != 1 || list.Items[0].ID != id {
 		t.Fatalf("list = %+v", list)
 	}
-	var forgotten memory.Memory
+	var forgotten map[string]any
 	structured(t, e.call(t, "forget", map[string]any{"id": id, "reason": "wrong", "purge": true}), &forgotten)
-	if forgotten.Status != memory.StatusForgotten || !forgotten.Purged {
+	if forgotten["id"] != id || forgotten["status"] != "forgotten" || forgotten["purged"] != true || forgotten["content"] != nil {
 		t.Fatalf("forget = %+v", forgotten)
 	}
 }

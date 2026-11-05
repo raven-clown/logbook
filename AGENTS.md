@@ -16,6 +16,8 @@ go test -race ./...
 golangci-lint run ./...
 make check   # lint plus tests with the 80% coverage check
 go run ./cmd/logbook mcp           # MCP over stdio on ./logbook.db
+go run ./cmd/logbook serve         # HTTP on :8420: /mcp, /v1/, /healthz, /readyz, /metrics
+go run ./cmd/logbook key create dev
 go run ./cmd/logbook recall "query"
 ```
 
@@ -25,7 +27,7 @@ go run ./cmd/logbook recall "query"
 
 ## Layout
 
-The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`, `importer`, `importer/jsonl`, `internal/config`, `internal/mcpserver`. The rest is planned.
+The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `admin` (API keys and bindings), `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`, `importer`, `importer/jsonl`, `internal/config`, `internal/httpx`, `internal/identity`, `internal/mcpserver`, `internal/obs`, `internal/rest`, `internal/wire`. The rest is planned.
 
 | Package | Holds |
 |---|---|
@@ -39,6 +41,7 @@ The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `memory
 | `staleness` | staleness rule interface and built-in rules |
 | `importer`, `importer/jsonl`, `importer/markdown` | importers |
 | `internal/identity`, `internal/settings`, `internal/mcpserver`, `internal/rest`, `internal/adminapi`, `internal/jobs`, `internal/obs` | server internals |
+| `internal/wire`, `internal/httpx` | request bodies shared by MCP and REST; JSON and error helpers |
 | `api/openapi.yaml` | OpenAPI file for `/v1/` and `/admin/v1/` |
 
 Plugins register by name in `init`, like `database/sql` drivers, and are enabled with a blank import in `cmd/logbook`.

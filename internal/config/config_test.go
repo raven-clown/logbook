@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestLoad(t *testing.T) {
 		check   func(config.Config) bool
 		wantErr string
 	}{
-		{name: "nothing", check: func(c config.Config) bool { return c == config.Default() }},
+		{name: "nothing", check: func(c config.Config) bool { return reflect.DeepEqual(c, config.Default()) }},
 		{name: "file", path: file, check: func(c config.Config) bool {
 			return c.Database.DSN == "/tmp/x.db" && c.Database.Driver == "sqlite" && c.DefaultProject == "mothership"
 		}},
@@ -43,7 +44,7 @@ func TestLoad(t *testing.T) {
 		}},
 		{name: "top level env", env: []string{"LOGBOOK_LISTEN_ADDR=:9000"}, check: func(c config.Config) bool { return c.ListenAddr == ":9000" }},
 		{name: "numeric looking value stays a string", env: []string{"LOGBOOK_DEFAULT_PROJECT=2026"}, check: func(c config.Config) bool { return c.DefaultProject == "2026" }},
-		{name: "other variables ignored", env: []string{"PATH=/bin", "LOGBOOKX=1", "LOGBOOK_TOKEN=secret", "LOGBOOK_NOW=2026-11-04T00:00:00Z"}, check: func(c config.Config) bool { return c == config.Default() }},
+		{name: "other variables ignored", env: []string{"PATH=/bin", "LOGBOOKX=1", "LOGBOOK_TOKEN=secret", "LOGBOOK_NOW=2026-11-04T00:00:00Z"}, check: func(c config.Config) bool { return reflect.DeepEqual(c, config.Default()) }},
 		{name: "unknown env key", env: []string{"LOGBOOK_NOPE=1"}, wantErr: "LOGBOOK_NOPE"},
 		{name: "unknown nested env key", env: []string{"LOGBOOK_DATABASE__NOPE=1"}, wantErr: "LOGBOOK_DATABASE__NOPE"},
 		{name: "unknown file key", path: writeFile(t, "databse:\n  dsn: x\n"), wantErr: "databse"},
@@ -77,5 +78,67 @@ func TestLoadSectionFromEnv(t *testing.T) {
 	_, err = config.Load("", []string{"LOGBOOK_LISTEN_ADDR__X=1"})
 	if err == nil || !strings.Contains(err.Error(), "LOGBOOK_LISTEN_ADDR__X") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDefaultsForAuth(t *testing.T) {
+	d := config.Default()
+	if d.Auth.ProjectMode != "open" || d.Auth.OIDC.TeamsClaim != "groups" {
+		t.Fatalf("auth defaults = %+v", d.Auth)
+	}
+}
+
+func TestEnvList(t *testing.T) {
+	c, err := config.Load("", []string{"LOGBOOK_AUTH__BOOTSTRAP_ADMINS=user:a, key:ci"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.Auth.BootstrapAdmins, []string{"user:a", "key:ci"}) {
+		t.Fatalf("bootstrap_admins = %q", c.Auth.BootstrapAdmins)
+	}
+	c, err = config.Load(writeFile(t, `auth:
+  bootstrap_admins: ["user:bob"]
+  oidc:
+    issuer: https://idp.example.com
+    audience: logbook
+telemetry:
+  otlp_endpoint: http://otel:4318
+public_url: https://logbook.example.com
+`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Auth.OIDC.Issuer != "https://idp.example.com" || c.Telemetry.OTLPEndpoint != "http://otel:4318" || c.PublicURL != "https://logbook.example.com" || c.Auth.BootstrapAdmins[0] != "user:bob" {
+		t.Fatalf("config = %+v", c)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	for _, tt := range []struct {
+		name, env, want string
+	}{
+		{"project mode", "LOGBOOK_AUTH__PROJECT_MODE=closed", "project_mode"},
+		{"issuer needs audience", "LOGBOOK_AUTH__OIDC__ISSUER=https://idp.example.com", "audience"},
+		{"issuer is a url", "LOGBOOK_AUTH__OIDC__ISSUER=idp", "issuer"},
+		{"bootstrap admin type", "LOGBOOK_AUTH__BOOTSTRAP_ADMINS=alice", "bootstrap_admins"},
+		{"bootstrap admin empty id", "LOGBOOK_AUTH__BOOTSTRAP_ADMINS=user:", "bootstrap_admins"},
+		{"public url", "LOGBOOK_PUBLIC_URL=logbook.example.com", "public_url"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := config.Load("", []string{tt.env})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want one naming %q", err, tt.want)
+			}
+		})
+	}
+	if _, err := config.Load("", []string{"LOGBOOK_AUTH__PROJECT_MODE=restricted", "LOGBOOK_AUTH__BOOTSTRAP_ADMINS=user:a,group:ops,key:ci"}); err != nil {
+		t.Fatalf("valid config rejected: %v", err)
+	}
+}
+
+func TestReservedVariables(t *testing.T) {
+	c, err := config.Load("", []string{"LOGBOOK_SECRET_KEY=x", "LOGBOOK_TEST_POSTGRES_DSN=postgres://x"})
+	if err != nil || !reflect.DeepEqual(c, config.Default()) {
+		t.Fatalf("reserved variables: %+v, %v", c, err)
 	}
 }

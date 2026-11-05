@@ -24,6 +24,12 @@ type Scope struct {
 
 var scopeID = regexp.MustCompile(`^[A-Za-z0-9._@+-]{1,200}$`)
 
+// userID is wider than scopeID because OIDC subjects are opaque strings such as
+// auth0|123 or a URL.
+var userID = regexp.MustCompile(`^[^\s\p{C}]+$`)
+
+const maxUserID = 255
+
 // ParseScope parses "user:<subject>", "project:<id>" or "team:<id>".
 func ParseScope(s string) (Scope, error) {
 	typ, id, ok := strings.Cut(s, ":")
@@ -31,7 +37,12 @@ func ParseScope(s string) (Scope, error) {
 		return Scope{}, Errorf(CodeInvalidArgument, "scope", "scope %q must look like type:id", s)
 	}
 	switch t := ScopeType(typ); t {
-	case ScopeUser, ScopeProject, ScopeTeam:
+	case ScopeUser:
+		if len(id) > maxUserID || !userID.MatchString(id) {
+			return Scope{}, Errorf(CodeInvalidArgument, "scope", "user id %q is not valid", id)
+		}
+		return Scope{Type: t, ID: id}, nil
+	case ScopeProject, ScopeTeam:
 		if !scopeID.MatchString(id) {
 			return Scope{}, Errorf(CodeInvalidArgument, "scope", "scope id %q is not valid", id)
 		}
@@ -49,10 +60,17 @@ func (s Scope) String() string {
 type Principal struct {
 	OrgID   string
 	Subject string
-	Teams   []string
-	Project string
-	Channel Channel
-	Client  string
+	// Teams the principal belongs to, from the token or member bindings.
+	Teams []string
+	// Projects the principal is a member of. They matter when RestrictProjects is set.
+	Projects []string
+	// AllTeams and AllProjects come from bindings on team:* and project:*.
+	AllTeams, AllProjects bool
+	// RestrictProjects is set in restricted project mode.
+	RestrictProjects bool
+	Project          string
+	Channel          Channel
+	Client           string
 }
 
 // CanRead reports whether the principal may read memories in s.
@@ -61,9 +79,9 @@ func (p Principal) CanRead(s Scope) bool {
 	case ScopeUser:
 		return s.ID == p.Subject
 	case ScopeProject:
-		return true
+		return !p.RestrictProjects || p.AllProjects || slices.Contains(p.Projects, s.ID)
 	case ScopeTeam:
-		return slices.Contains(p.Teams, s.ID)
+		return p.AllTeams || slices.Contains(p.Teams, s.ID)
 	}
 	return false
 }

@@ -244,6 +244,9 @@ func TestRunMCP(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("mcp did not exit after stdin closed")
 	}
+	if out := c.ok("list", "--project", "demo", "--json"); !strings.Contains(out, `"client": "test"`) {
+		t.Fatalf("the MCP client name was not recorded: %s", out)
+	}
 }
 
 func TestRunEscapesTerminalControls(t *testing.T) {
@@ -260,5 +263,14 @@ func TestRunEscapesTerminalControls(t *testing.T) {
 	}
 	if code, _, errOut := c.run("verify", "mem_\x1b[2J", "confirm"); code != 1 || strings.Contains(errOut, "\x1b") {
 		t.Fatalf("error output carried a raw escape: %q", errOut)
+	}
+}
+
+func TestRunJSONEscapesControls(t *testing.T) {
+	c := newCLI(t)
+	raw := string([]rune{0x9b, 0x202e})
+	c.ok("remember", "note "+raw+" end")
+	if out := c.ok("list", "--json"); strings.ContainsAny(out, raw) {
+		t.Fatalf("--json printed raw control runes: %q", out)
 	}
 }

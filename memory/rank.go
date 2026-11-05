@@ -29,13 +29,14 @@ func Fuse(k float64, lists ...[]Hit) []Hit {
 
 // ReadableScopes lists the scopes the principal reads by default: its user scope,
 // the project (project, or the principal's current one), and its teams, or only
-// team when one is named and the principal belongs to it.
+// team when one is named and the principal belongs to it. A project the
+// principal cannot read is left out.
 func (p Principal) ReadableScopes(project, team string) []string {
 	out := []string{"user:" + p.Subject}
 	if project == "" {
 		project = p.Project
 	}
-	if project != "" {
+	if project != "" && p.CanRead(Scope{Type: ScopeProject, ID: project}) {
 		out = append(out, "project:"+project)
 	}
 	for _, t := range p.Teams {

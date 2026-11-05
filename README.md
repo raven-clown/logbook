@@ -4,7 +4,7 @@ Shared memory for agents. One agent writes down what it learned, another one fin
 
 logbook is an MCP server (stdio and Streamable HTTP) with the same operations over REST. It is a single Go binary with embedded SQLite, and it runs on Postgres when a team needs more. It works without any model, and gets semantic search and fact extraction when you point it at an OpenAI-compatible endpoint.
 
-> **Status: in development.** Nothing is released yet. The design is settled in [docs/design.md](docs/design.md), and the first milestone is being built in the open. Watch the repository or pick up an issue if you want to help shape it.
+> **Status: in development.** Nothing is released yet. The design is settled in [docs/design.md](docs/design.md). The core and the HTTP server work today; the admin API is next. Watch the repository or pick up an issue if you want to help shape it.
 
 ## Why another memory server
 
@@ -57,13 +57,57 @@ The agent gets five tools:
 | `forget` | Hide a memory, or purge it |
 | `list_memories` | Browse, filter, or walk the review queue |
 
-Run it as a server for a team:
+## Run it as a server
+
+`logbook serve` answers MCP over Streamable HTTP at `/mcp` and the same operations over REST under `/v1/`, on port 8420 by default. Every call needs `Authorization: Bearer <token>`: a logbook API key or an OIDC token from your identity provider.
 
 ```shell
+logbook key create my-agent                           # prints an lbk_ key once
+logbook binding add key:my-agent member team:platform # optional: give it a team scope
 logbook serve
 ```
 
-With no config file, it starts on SQLite in the working directory and prints a one-time admin API key, so you can set everything else up through the admin API without writing YAML.
+Point an MCP client at it:
+
+```json
+{
+  "mcpServers": {
+    "logbook": {
+      "type": "http",
+      "url": "http://localhost:8420/mcp",
+      "headers": { "Authorization": "Bearer lbk_...", "X-Project": "mothership" }
+    }
+  }
+}
+```
+
+`X-Project` sets the current project, so memories land in `project:mothership` unless the agent asks for another scope. A gateway such as airlock can set it per caller.
+
+The command line talks to a server too:
+
+```shell
+export LOGBOOK_TOKEN=lbk_...
+logbook recall "which go version does ci use" --server http://localhost:8420
+logbook list --order review --server http://localhost:8420
+```
+
+To sign people in with OIDC, add the issuer and audience. Teams come from the `groups` claim unless you name another one:
+
+```yaml
+public_url: "https://logbook.example.com"
+auth:
+  bootstrap_admins: ["user:alice@example.com"]
+  oidc:
+    issuer: "https://idp.example.com"
+    audience: "logbook"
+  project_mode: "open"   # or restricted: only project members read a project
+```
+
+With `public_url` set, logbook serves the OAuth protected resource metadata that MCP clients use to find your identity provider.
+
+`/healthz`, `/readyz` and `/metrics` (Prometheus) are open. Logs are JSON on stdout, every response carries `X-Request-ID`, and `traceparent` is honoured. Set `telemetry.otlp_endpoint` to export traces over OTLP.
+
+A web console and a first-start admin key come with the admin API in the next milestone. Until then, keys and bindings are managed with `logbook key` and `logbook binding` on the server's database.
 
 ## Part of a bigger stack
 
