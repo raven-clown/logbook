@@ -12,8 +12,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/raven-clown/logbook"
 	"github.com/raven-clown/logbook/importer"
-	"github.com/raven-clown/logbook/importer/jsonl"
 	"github.com/raven-clown/logbook/internal/mcpserver"
+	"github.com/raven-clown/logbook/internal/wire"
 	"github.com/raven-clown/logbook/memory"
 )
 
@@ -41,6 +41,7 @@ func (a *app) mcp(args []string) error {
 
 func (a *app) remember(args []string) error {
 	fs, c := a.flags("remember")
+	rf := a.addRemoteFlags(fs)
 	kind := fs.String("kind", "", "fact, preference, decision, procedure or observation")
 	subject := fs.String("subject", "", "topic key, such as ci.go-version")
 	scope := fs.String("scope", "", "user, project, team or a full scope")
@@ -55,13 +56,13 @@ func (a *app) remember(args []string) error {
 	if err != nil {
 		return err
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	res, err := s.svc.Remember(a.ctx, s.principal(memory.ChannelCLI), memory.RememberRequest{
-		Content: pos[0], Kind: memory.Kind(*kind), Subject: *subject, Scope: *scope, Team: *team,
+	defer func() { _ = b.close() }()
+	res, err := b.remember(a.ctx, wire.Remember{
+		Content: pos[0], Kind: *kind, Subject: *subject, Scope: *scope, Team: *team,
 		Corrects: *corrects, Evidence: *evidence, Tags: tags, Refs: refs, RelatedTo: related,
 	})
 	if err != nil {
@@ -85,6 +86,7 @@ func (a *app) remember(args []string) error {
 
 func (a *app) recall(args []string) error {
 	fs, c := a.flags("recall")
+	rf := a.addRemoteFlags(fs)
 	limit := fs.Int("limit", 0, "how many results, default 8")
 	verified := fs.Bool("verified-only", false, "only verified memories")
 	noStale := fs.Bool("exclude-stale", false, "leave out stale memories")
@@ -97,16 +99,20 @@ func (a *app) recall(args []string) error {
 	if len(pos) == 0 {
 		return usageError{msg: "usage: logbook recall <query> [flags]"}
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	req := memory.RecallRequest{Query: strings.Join(pos, " "), Scopes: scopes, Limit: *limit, ExcludeStale: *noStale}
-	if *verified {
-		req.MinStatus = memory.StatusVerified
+	defer func() { _ = b.close() }()
+	req := wire.Recall{Query: strings.Join(pos, " "), Scopes: scopes, Limit: *limit}
+	if *noStale {
+		f := false
+		req.IncludeStale = &f
 	}
-	res, err := s.svc.Recall(a.ctx, s.principal(memory.ChannelCLI), req)
+	if *verified {
+		req.MinStatus = string(memory.StatusVerified)
+	}
+	res, err := b.recall(a.ctx, req)
 	if err != nil {
 		return err
 	}
@@ -124,6 +130,7 @@ func (a *app) recall(args []string) error {
 
 func (a *app) list(args []string) error {
 	fs, c := a.flags("list")
+	rf := a.addRemoteFlags(fs)
 	stale := fs.Bool("stale", false, "only memories past their review date")
 	order := fs.String("order", "", "newest or review")
 	limit := fs.Int("limit", 0, "page size, default 50")
@@ -136,18 +143,14 @@ func (a *app) list(args []string) error {
 	if _, err := parse(fs, args, 0, "list [flags]"); err != nil {
 		return err
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	st := make([]memory.Status, len(statuses))
-	for i, v := range statuses {
-		st[i] = memory.Status(v)
-	}
-	res, err := s.svc.List(a.ctx, s.principal(memory.ChannelCLI), memory.ListRequest{
-		Scopes: scopes, Statuses: st, Kind: memory.Kind(*kind), Tag: *tag, Stale: *stale,
-		Order: memory.Order(*order), Limit: *limit, Cursor: *cursor,
+	defer func() { _ = b.close() }()
+	res, err := b.list(a.ctx, wire.List{
+		Scopes: scopes, Status: statuses, Kind: *kind, Tag: *tag, Stale: *stale,
+		Order: *order, Limit: *limit, Cursor: *cursor,
 	})
 	if err != nil {
 		return err
@@ -155,7 +158,7 @@ func (a *app) list(args []string) error {
 	if c.json {
 		return a.printJSON(res)
 	}
-	now := s.now()
+	now := b.now()
 	for _, m := range res.Items {
 		a.printMemory(m, !m.ReviewAfter.IsZero() && !now.Before(m.ReviewAfter))
 	}
@@ -167,17 +170,18 @@ func (a *app) list(args []string) error {
 
 func (a *app) verify(args []string) error {
 	fs, c := a.flags("verify")
+	rf := a.addRemoteFlags(fs)
 	note := fs.String("note", "", "how you checked")
 	pos, err := parse(fs, args, 2, "verify <id> confirm|dispute [--note text]")
 	if err != nil {
 		return err
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	res, err := s.svc.Verify(a.ctx, s.principal(memory.ChannelCLI), memory.VerifyRequest{ID: pos[0], Verdict: memory.Verdict(pos[1]), Note: *note})
+	defer func() { _ = b.close() }()
+	res, err := b.verify(a.ctx, wire.Verify{ID: pos[0], Verdict: pos[1], Note: *note})
 	if err != nil {
 		return err
 	}
@@ -194,18 +198,19 @@ func (a *app) verify(args []string) error {
 
 func (a *app) forget(args []string) error {
 	fs, c := a.flags("forget")
+	rf := a.addRemoteFlags(fs)
 	reason := fs.String("reason", "", "why")
 	purge := fs.Bool("purge", false, "erase the content now")
 	pos, err := parse(fs, args, 1, "forget <id> [--reason text] [--purge]")
 	if err != nil {
 		return err
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	m, err := s.svc.Forget(a.ctx, s.principal(memory.ChannelCLI), memory.ForgetRequest{ID: pos[0], Reason: *reason, Purge: *purge})
+	defer func() { _ = b.close() }()
+	m, err := b.forget(a.ctx, wire.Forget{ID: pos[0], Reason: *reason, Purge: *purge})
 	if err != nil {
 		return err
 	}
@@ -257,19 +262,18 @@ func (a *app) importCmd(args []string) error {
 
 func (a *app) export(args []string) error {
 	fs, c := a.flags("export")
+	rf := a.addRemoteFlags(fs)
 	var scopes stringList
 	fs.Var(&scopes, "scope", "user, project, team or a full scope, repeatable")
 	if _, err := parse(fs, args, 0, "export [--scope scope]"); err != nil {
 		return err
 	}
-	s, err := a.open(c)
+	b, err := a.backend(c, rf)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = s.store.Close() }()
-	return s.svc.Export(a.ctx, s.principal(memory.ChannelCLI), scopes, func(r memory.Record) error {
-		return jsonl.Write(a.stdout, r)
-	})
+	defer func() { _ = b.close() }()
+	return b.export(a.ctx, scopes, a.stdout)
 }
 
 func (a *app) migrate(args []string) error {
