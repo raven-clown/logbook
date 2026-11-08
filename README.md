@@ -9,6 +9,8 @@
 [![release](https://img.shields.io/github/v/release/raven-clown/logbook?style=for-the-badge&color=10B981)](https://github.com/raven-clown/logbook/releases)
 [![Go Reference](https://img.shields.io/badge/go-reference-10B981?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/raven-clown/logbook)
 [![license](https://img.shields.io/badge/license-Apache--2.0-10B981?style=for-the-badge)](LICENSE)
+[![openssf scorecard](https://img.shields.io/ossf-scorecard/github.com/raven-clown/logbook?style=for-the-badge&label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/raven-clown/logbook)
+[![go report card](https://goreportcard.com/badge/github.com/raven-clown/logbook?style=for-the-badge)](https://goreportcard.com/report/github.com/raven-clown/logbook)
 
 </div>
 
@@ -172,6 +174,12 @@ Ideas the design already has a slot for: a Qdrant vector index, importers for me
 ## A note on the name
 
 This project is not related to [zalando/logbook](https://github.com/zalando/logbook), the Java HTTP logging library, or to the Python logging library of the same name.
+
+## Contributors
+
+Thanks to everyone who has helped build logbook.
+
+<a href="https://github.com/raven-clown/logbook/graphs/contributors"><img src="https://contrib.rocks/image?repo=raven-clown/logbook" alt="Contributors to logbook"></a>
 
 ## License
 
