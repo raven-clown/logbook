@@ -10,7 +10,6 @@
 [![Go Reference](https://img.shields.io/badge/go-reference-10B981?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/raven-clown/logbook)
 [![license](https://img.shields.io/badge/license-Apache--2.0-10B981?style=for-the-badge)](LICENSE)
 [![openssf scorecard](https://img.shields.io/ossf-scorecard/github.com/raven-clown/logbook?style=for-the-badge&label=openssf%20scorecard)](https://scorecard.dev/viewer/?uri=github.com/raven-clown/logbook)
-[![go report card](https://goreportcard.com/badge/github.com/raven-clown/logbook?style=for-the-badge)](https://goreportcard.com/report/github.com/raven-clown/logbook)
 
 </div>
 
