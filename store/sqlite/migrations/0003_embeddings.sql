@@ -8,4 +8,4 @@ CREATE TABLE embeddings (
     PRIMARY KEY (org_id, memory_id, model)
 );
 
-CREATE INDEX embeddings_model ON embeddings (org_id, model);
+CREATE INDEX embeddings_model ON embeddings (org_id, model, created_at);

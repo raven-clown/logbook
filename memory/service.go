@@ -64,6 +64,7 @@ type Service struct {
 	budgets   Budgets
 	// embedState is stateUnknown, stateOK or stateFailing, from the last embedder call.
 	embedState int32
+	vectorState
 }
 
 // NewService returns a Service on s.
@@ -72,6 +73,7 @@ func NewService(s Store, o Options) *Service {
 		store: s, now: o.Now, newID: o.NewID, rules: o.Rules, periods: o.ReviewPeriods, weights: o.Weights,
 		policy: o.VerifyPolicy, minStatus: o.MinStatus,
 		embedder: o.Embedder, index: o.Index, extractor: o.Extractor, budgets: o.Budgets.withDefaults(),
+		vectorState: vectorState{started: time.Now(), refreshed: map[string]time.Time{}},
 	}
 	if svc.now == nil {
 		svc.now = time.Now

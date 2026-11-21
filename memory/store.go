@@ -49,8 +49,9 @@ type EmbeddingStore interface {
 	PutEmbedding(ctx context.Context, orgID, id, model string, v []float32) error
 	// DeleteEmbeddings removes every vector of the memory.
 	DeleteEmbeddings(ctx context.Context, orgID, id string) error
-	// Embeddings calls fn for every vector of model whose memory is not forgotten.
-	Embeddings(ctx context.Context, orgID, model string, fn func(id, scope string, v []float32) error) error
+	// Embeddings calls fn for every vector of model whose memory is not
+	// forgotten, or only those stored at or after since when it is set.
+	Embeddings(ctx context.Context, orgID, model string, since time.Time, fn func(id, scope string, v []float32) error) error
 	// MissingEmbeddings returns up to limit memories that are not forgotten and
 	// have no vector for model, oldest first.
 	MissingEmbeddings(ctx context.Context, orgID, model string, limit int) ([]*Memory, error)

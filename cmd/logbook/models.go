@@ -18,6 +18,7 @@ import (
 
 const (
 	backfillEvery = 30 * time.Second
+	refreshEvery  = 10 * time.Second
 	purgeEvery    = time.Hour
 	backfillBatch = 64
 )
@@ -67,7 +68,7 @@ func serviceOptions(cfg config.Config, st memory.Store) (memory.Options, error) 
 }
 
 // startWorkers runs the purge loop and, with an embedder, the backfill loop
-// until ctx ends. The returned function waits for them to stop.
+// and the loop that reads vectors other processes stored, until ctx ends. The returned function waits for them to stop.
 func startWorkers(ctx context.Context, s *session) func() {
 	var wg sync.WaitGroup
 	wg.Go(func() {
@@ -90,6 +91,13 @@ func startWorkers(ctx context.Context, s *session) func() {
 				}
 				if err != nil && !errors.Is(err, context.Canceled) {
 					slog.WarnContext(ctx, "embedding backfill failed, retrying later", "err", err)
+				}
+			})
+		})
+		wg.Go(func() {
+			every(ctx, refreshEvery, func() {
+				if _, err := s.svc.RefreshVectors(ctx, memory.DefaultOrg); err != nil && !errors.Is(err, context.Canceled) {
+					slog.WarnContext(ctx, "reading vectors from other processes failed", "err", err)
 				}
 			})
 		})

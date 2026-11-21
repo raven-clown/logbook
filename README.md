@@ -168,7 +168,7 @@ extractor:
 
 When the embedder is down, writes are stored without a vector and `degraded: ["embeddings"]` says so. A background loop in `logbook serve` and `logbook mcp` adds the missing vectors once it answers again, and recall falls back to full-text search in the meantime. `/readyz` reports the embedder as `unknown`, `ok` or `failing` from its last call.
 
-Vectors are stored per model. After changing `model` or `dimensions`, run `logbook reindex` to drop the old vectors and embed every memory again. The default vector index keeps a copy of the vectors in the `logbook serve` or `logbook mcp` process, so it serves one process: write through `--server` while a server is running, or restart it after local writes.
+Vectors are stored per model. After changing `model` or `dimensions`, run `logbook reindex` to drop the old vectors and embed every memory again. The default vector index keeps a copy of the vectors in each `logbook serve` and `logbook mcp` process. Every 10 seconds it reads the vectors other processes stored, so several agents on one database file find each other's memories by meaning within that time, and by words right away.
 
 ## Trust settings
 

@@ -301,6 +301,55 @@ func TestDuplicateSkipsEmbedding(t *testing.T) {
 	}
 }
 
+func TestBackfillSkipsMemoryPurgedMeanwhile(t *testing.T) {
+	m := &models{}
+	f := newModelFixture(t, m)
+	m.emb.SetErr(errors.New("down"))
+	id := f.remember(t, alice, memory.RememberRequest{Content: "the vpn password is in the vault"}).ID
+	m.emb.SetErr(nil)
+	m.emb.OnEmbed = func([]string) {
+		if _, err := f.svc.Forget(background, alice, memory.ForgetRequest{ID: id, Purge: true}); err != nil {
+			t.Error(err)
+		}
+	}
+	n, err := f.svc.Backfill(background, memory.DefaultOrg, 10)
+	m.emb.OnEmbed = nil
+	if err != nil || n != 0 {
+		t.Fatalf("Backfill = %d, %v", n, err)
+	}
+	es := f.store.(memory.EmbeddingStore)
+	missing, _ := es.MissingEmbeddings(background, memory.DefaultOrg, "bag-of-words", 10)
+	if len(missing) != 0 {
+		t.Fatalf("missing = %v", missing)
+	}
+	kept := 0
+	_ = es.Embeddings(background, "default", "bag-of-words", time.Time{}, func(string, string, []float32) error { kept++; return nil })
+	if kept != 0 || f.get(t, id).Content != "" {
+		t.Fatal("a vector of purged content was stored")
+	}
+}
+
+func TestRefreshVectorsSeesOtherProcesses(t *testing.T) {
+	m := &models{emb: &testutil.BagOfWords{Synonyms: map[string]string{"database": "postgres"}}}
+	f := newModelFixture(t, m)
+	other := vecmem.New(memory.VectorLoader(f.store, m.emb.Model()))
+	b := memory.NewService(f.store, memory.Options{Now: func() time.Time { return f.now }, Embedder: m.emb, Index: other})
+	if res, err := b.Recall(background, alice, memory.RecallRequest{Query: "which database"}); err != nil || len(res.Results) != 0 {
+		t.Fatalf("first recall = %v, %v", res, err)
+	}
+	id := f.remember(t, alice, memory.RememberRequest{Content: "staging runs postgres 17"}).ID
+	if res, _ := b.Recall(background, alice, memory.RecallRequest{Query: "which database"}); len(res.Results) != 0 {
+		t.Fatal("the other index saw the write without a refresh, so the test proves nothing")
+	}
+	if n, err := b.RefreshVectors(background, memory.DefaultOrg); err != nil || n != 1 {
+		t.Fatalf("RefreshVectors = %d, %v", n, err)
+	}
+	res, _ := b.Recall(background, alice, memory.RecallRequest{Query: "which database"})
+	if len(res.Results) != 1 || res.Results[0].ID != id {
+		t.Fatalf("after refresh = %v", resultIDs(res.Results))
+	}
+}
+
 func TestReindex(t *testing.T) {
 	f := newModelFixture(t, &models{})
 	f.remember(t, alice, memory.RememberRequest{Content: "one"})

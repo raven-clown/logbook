@@ -5,9 +5,19 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// vectorState is the per-process bookkeeping for the vector index.
+type vectorState struct {
+	// started is the wall-clock time the service was made. Vectors stored
+	// before it reach the index through its first load.
+	started   time.Time
+	refreshMu sync.Mutex
+	refreshed map[string]time.Time
+}
 
 // Embedder turns texts into vectors. embed.Embedder has the same methods.
 type Embedder interface {
@@ -87,8 +97,37 @@ func VectorLoader(st Store, model string) func(ctx context.Context, orgID string
 		if !ok {
 			return errors.New("the store does not keep embeddings")
 		}
-		return es.Embeddings(ctx, orgID, model, fn)
+		return es.Embeddings(ctx, orgID, model, time.Time{}, fn)
 	}
+}
+
+// refreshOverlap reaches back past the last refresh, so a vector stored while
+// the previous refresh ran is not missed. Upserts are idempotent.
+const refreshOverlap = 5 * time.Second
+
+// RefreshVectors adds to the index the vectors other processes on the same
+// database stored since the last refresh, and returns how many it read.
+func (s *Service) RefreshVectors(ctx context.Context, orgID string) (int, error) {
+	if !s.vectorsOn() {
+		return 0, nil
+	}
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	since, ok := s.refreshed[orgID]
+	if !ok {
+		since = s.started
+	}
+	start := time.Now()
+	n := 0
+	err := s.store.(EmbeddingStore).Embeddings(ctx, orgID, s.embedder.Model(), since.Add(-refreshOverlap), func(id, scope string, v []float32) error {
+		n++
+		return s.index.Upsert(ctx, orgID, scope, id, v)
+	})
+	if err != nil {
+		return n, err
+	}
+	s.refreshed[orgID] = start
+	return n, nil
 }
 
 func (s *Service) vectorsOn() bool {
@@ -175,16 +214,41 @@ func (s *Service) Backfill(ctx context.Context, orgID string, batch int) (int, e
 			return total, err
 		}
 		for i, m := range missing {
-			if err := es.PutEmbedding(ctx, orgID, m.ID, model, vs[i]); err != nil {
+			stored, err := s.storeBackfilled(ctx, m, model, vs[i])
+			if err != nil {
 				return total, err
 			}
-			s.upsertVector(ctx, m, vs[i])
-			total++
+			if stored {
+				s.upsertVector(ctx, m, vs[i])
+				total++
+			}
 		}
 		if len(missing) < batch {
 			return total, nil
 		}
 	}
+}
+
+// storeBackfilled writes a backfilled vector unless the memory was forgotten or
+// changed while it was being embedded, so a purge is never undone.
+func (s *Service) storeBackfilled(ctx context.Context, m *Memory, model string, v []float32) (bool, error) {
+	stored := false
+	err := s.store.Tx(ctx, func(st Store) error {
+		cur, err := st.Get(ctx, m.OrgID, m.ID)
+		if CodeOf(err) == CodeNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		es, ok := st.(EmbeddingStore)
+		if !ok || cur.Status == StatusForgotten || cur.ContentHash != m.ContentHash {
+			return nil
+		}
+		stored = true
+		return es.PutEmbedding(ctx, m.OrgID, m.ID, model, v)
+	})
+	return stored, err
 }
 
 // ExtractorState is "configured" or "not configured".

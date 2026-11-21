@@ -20,7 +20,9 @@ type BagOfWords struct {
 	// Synonyms maps a word to the word whose bucket it shares, so a query can
 	// match by meaning where full-text search finds nothing.
 	Synonyms map[string]string
-	mu       sync.Mutex
+	// OnEmbed runs inside every successful call, before it returns.
+	OnEmbed func(texts []string)
+	mu      sync.Mutex
 	err      error
 	block    bool
 	calls    int
@@ -54,6 +56,9 @@ func (b *BagOfWords) Embed(ctx context.Context, texts []string) ([][]float32, er
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
 		out[i] = b.vector(t)
+	}
+	if b.OnEmbed != nil {
+		b.OnEmbed(texts)
 	}
 	return out, nil
 }

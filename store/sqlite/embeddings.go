@@ -29,11 +29,12 @@ func (s *Store) DeleteEmbeddings(ctx context.Context, orgID, id string) error {
 	return nil
 }
 
-// Embeddings calls fn for every vector of model whose memory is not forgotten.
-func (s *Store) Embeddings(ctx context.Context, orgID, model string, fn func(id, scope string, v []float32) error) error {
+// Embeddings calls fn for every vector of model whose memory is not forgotten,
+// or only those stored at or after since when it is set.
+func (s *Store) Embeddings(ctx context.Context, orgID, model string, since time.Time, fn func(id, scope string, v []float32) error) error {
 	rows, err := s.q.QueryContext(ctx, `SELECT e.memory_id, m.scope, e.vector FROM embeddings e
 		JOIN memories m ON m.org_id = e.org_id AND m.id = e.memory_id
-		WHERE e.org_id = ? AND e.model = ? AND m.status != 'forgotten'`, orgID, model)
+		WHERE e.org_id = ? AND e.model = ? AND e.created_at >= ? AND m.status != 'forgotten'`, orgID, model, formatTime(since))
 	if err != nil {
 		return fmt.Errorf("reading embeddings: %w", err)
 	}

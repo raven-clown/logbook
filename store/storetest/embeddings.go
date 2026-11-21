@@ -46,7 +46,7 @@ type stored struct {
 func vectors(t *testing.T, e memory.EmbeddingStore, org, model string) map[string]stored {
 	t.Helper()
 	out := map[string]stored{}
-	err := e.Embeddings(context.Background(), org, model, func(id, scope string, v []float32) error {
+	err := e.Embeddings(context.Background(), org, model, time.Time{}, func(id, scope string, v []float32) error {
 		out[id] = stored{scope: scope, v: v}
 		return nil
 	})
@@ -84,6 +84,15 @@ func embeddingRoundTrip(t *testing.T, s memory.Store, e memory.EmbeddingStore) {
 	}
 	if got := vectors(t, e, memory.DefaultOrg, "m2"); len(got) != 0 {
 		t.Fatalf("another model = %+v", got)
+	}
+	n := 0
+	err := e.Embeddings(context.Background(), memory.DefaultOrg, "m1", time.Now().Add(time.Hour), func(string, string, []float32) error { n++; return nil })
+	if err != nil || n != 0 {
+		t.Fatalf("Embeddings since the future = %d, %v", n, err)
+	}
+	err = e.Embeddings(context.Background(), memory.DefaultOrg, "m1", time.Now().Add(-time.Hour), func(string, string, []float32) error { n++; return nil })
+	if err != nil || n != 1 {
+		t.Fatalf("Embeddings since an hour ago = %d, %v", n, err)
 	}
 }
 

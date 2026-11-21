@@ -213,6 +213,9 @@ func (s *Service) rememberOne(ctx context.Context, p Principal, r RememberReques
 			if slices.Contains(out.Conflicts, id) || slices.Contains(r.RelatedTo, id) {
 				continue
 			}
+			if n, err := st.Get(ctx, p.OrgID, id); err != nil || !n.Status.Active() {
+				continue
+			}
 			if err := st.AddEdge(ctx, Edge{OrgID: p.OrgID, From: m.ID, To: id, Type: EdgeRelated, CreatedBy: jobAuthor.Subject, CreatedAt: now}); err != nil {
 				return err
 			}

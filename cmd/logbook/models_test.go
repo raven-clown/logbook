@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/raven-clown/logbook/internal/testutil"
 	"github.com/raven-clown/logbook/memory"
@@ -117,7 +118,7 @@ func TestReindexCommand(t *testing.T) {
 	defer func() { _ = st.Close() }()
 	for model, want := range map[string]int{"model-a": 0, "model-b": 2} {
 		n := 0
-		_ = st.Embeddings(context.Background(), memory.DefaultOrg, model, func(string, string, []float32) error { n++; return nil })
+		_ = st.Embeddings(context.Background(), memory.DefaultOrg, model, time.Time{}, func(string, string, []float32) error { n++; return nil })
 		if n != want {
 			t.Fatalf("%s has %d vectors, want %d", model, n, want)
 		}

@@ -534,7 +534,7 @@ Decided while building v0.2.0:
 
 24. The caller's token goes to the embedder and extractor only when that client sets `forward_token: true`, and a logbook API key is never forwarded; otherwise the client sends its own `api_key`. This follows the contract's rule for airlock: forwarding to a service outside the stack is opt-in. Set it for transponder.
 25. Vectors are stored per memory and model key. The key is the model name, plus `@<dimensions>` when `dimensions` is set, so changing either starts a fresh set and `logbook reindex` drops the old one.
-26. The in-process vector index loads an organisation's vectors on its first search, not at startup, so one-shot commands stay fast.
+26. The in-process vector index loads an organisation's vectors on its first search, not at startup, so one-shot commands stay fast. `serve` and `mcp` read the vectors other processes stored every 10 seconds, because one `logbook mcp` per agent on a shared file is the normal setup. A backfilled vector is written only if its memory is still there and unchanged, so a purge during the embedding call is never undone.
 27. Neighbours for `related` edges and the contradiction check come from the new memory's own scope and must be active.
 28. The backfill and purge loops run inside `logbook serve` and `logbook mcp` and select their work from the memory tables, so v0.2.0 has no jobs table. It arrives with the admin API.
 29. The verify policy and default `min_status` are set per scope type in config. `verifiers` applies to project and team scopes only. Per-scope overrides arrive with `PATCH scopes`.
