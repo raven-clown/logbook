@@ -47,7 +47,7 @@ type RememberResult struct {
 // with different content marks the older memory disputed.
 func (s *Service) Remember(ctx context.Context, p Principal, r RememberRequest) (*RememberResult, error) {
 	if r.Extract {
-		return nil, Errorf(CodeUnavailable, "", "no extractor is configured, so extract is not available")
+		return s.rememberExtracted(ctx, p, r)
 	}
 	content, err := validContent(r.Content)
 	if err != nil {
@@ -69,6 +69,68 @@ func (s *Service) Remember(ctx context.Context, p Principal, r RememberRequest) 
 		return nil, err
 	}
 	return &RememberResult{Memories: []Remembered{out}, Degraded: degraded}, nil
+}
+
+// maxExtracted is the most facts one extract call stores.
+const maxExtracted = 10
+
+// rememberExtracted asks the extractor for the facts in r.Content and stores
+// each one like a plain remember, with source extracted and its sentence as evidence.
+func (s *Service) rememberExtracted(ctx context.Context, p Principal, r RememberRequest) (*RememberResult, error) {
+	if s.extractor == nil {
+		return nil, Errorf(CodeUnavailable, "", "no extractor is configured, so extract is not available")
+	}
+	if r.Corrects != "" {
+		return nil, Errorf(CodeInvalidArgument, "corrects", "corrects cannot be used with extract")
+	}
+	text, err := validContent(r.Content)
+	if err != nil {
+		return nil, err
+	}
+	if err := validMeta(r); err != nil {
+		return nil, err
+	}
+	sc, err := s.targetScope(ctx, p, r)
+	if err != nil {
+		return nil, err
+	}
+	ectx, cancel := context.WithTimeout(ctx, s.budgets.Extract)
+	facts, err := s.extractor.Extract(ectx, text)
+	cancel()
+	if err != nil {
+		slog.WarnContext(ctx, "extraction failed", "err", err)
+		return nil, Errorf(CodeUnavailable, "", "the extractor did not answer, try again later")
+	}
+	res := &RememberResult{Memories: []Remembered{}}
+	for _, c := range facts {
+		if len(res.Memories) == maxExtracted {
+			break
+		}
+		content, err := validContent(c.Content)
+		if err != nil {
+			continue
+		}
+		kind, err := ParseKind(string(c.Kind))
+		if err != nil {
+			kind = KindFact
+		}
+		fr := r
+		fr.Extract, fr.Source, fr.Kind, fr.Subject, fr.Evidence = false, SourceExtracted, kind, c.Subject, c.Evidence
+		if validMeta(fr) != nil {
+			fr.Subject, fr.Evidence = "", ""
+		}
+		out, degraded, err := s.rememberOne(ctx, p, fr, sc, content, kind)
+		if err != nil {
+			return nil, err
+		}
+		res.Memories = append(res.Memories, out)
+		for _, d := range degraded {
+			if !slices.Contains(res.Degraded, d) {
+				res.Degraded = append(res.Degraded, d)
+			}
+		}
+	}
+	return res, nil
 }
 
 // rememberOne stores one validated memory in sc.

@@ -22,7 +22,7 @@ type Remember struct {
 	RelatedTo  []string `json:"related_to,omitempty" jsonschema:"IDs of memories this one is related to."`
 	ValidUntil string   `json:"valid_until,omitempty" jsonschema:"RFC 3339 time after which the memory stops being true."`
 	Evidence   string   `json:"evidence,omitempty" jsonschema:"How you know: a command output, a link, a quote."`
-	Extract    bool     `json:"extract,omitempty" jsonschema:"Treat content as raw text and pull facts out of it. Needs an extractor to be configured."`
+	Extract    bool     `json:"extract,omitempty" jsonschema:"Treat content as raw text, such as a conversation turn, and store up to 10 facts pulled out of it, each with its own kind and subject. Needs an extractor to be configured."`
 }
 
 // ToRequest converts the body.
