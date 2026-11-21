@@ -21,9 +21,9 @@ type BagOfWords struct {
 	// match by meaning where full-text search finds nothing.
 	Synonyms map[string]string
 	mu       sync.Mutex
-	err   error
-	block bool
-	calls int
+	err      error
+	block    bool
+	calls    int
 }
 
 // SetErr makes every call fail with err, or work again with nil.
