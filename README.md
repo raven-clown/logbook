@@ -140,6 +140,49 @@ With `public_url` set, logbook serves the OAuth protected resource metadata that
 
 A web console and a first-start admin key come with the admin API in the next milestone. Until then, keys and bindings are managed with `logbook key` and `logbook binding` on the server's database.
 
+## Search by meaning and pull facts out of text
+
+logbook works with no model at all. Point it at transponder, or at any OpenAI-compatible endpoint such as OpenAI, Ollama or vLLM, and it also:
+
+- finds memories by meaning, not only by shared words, by fusing full-text and vector results
+- links each new memory to up to three near neighbours in its scope with `related` edges
+- asks the extractor whether a memory without a `subject` contradicts its closest neighbours, and marks the older one `disputed` when it does
+- stores the facts in raw text, such as a conversation turn, when `remember` is called with `extract: true`
+
+```yaml
+embedder:
+  type: "openai"
+  base_url: "http://transponder:8080/v1"
+  model: "text-embedding-3-small"
+  dimensions: 0          # ask for shorter vectors, when the model supports it
+  api_key: ""            # used when there is no caller token to forward
+  forward_token: true    # send the caller's OIDC token; only for transponder
+extractor:
+  type: "openai"
+  base_url: "http://transponder:8080/v1"
+  model: "memory-extract"
+  forward_token: true
+```
+
+`forward_token` is off by default, so a caller's token never reaches a service outside your stack. Turn it on only for transponder, which checks the same tokens. logbook API keys are never forwarded.
+
+When the embedder is down, writes are stored without a vector and `degraded: ["embeddings"]` says so. A background loop in `logbook serve` and `logbook mcp` adds the missing vectors once it answers again, and recall falls back to full-text search in the meantime. `/readyz` reports the embedder as `unknown`, `ok` or `failing` from its last call.
+
+Vectors are stored per model. After changing `model` or `dimensions`, run `logbook reindex` to drop the old vectors and embed every memory again. The default vector index keeps a copy of the vectors in the `logbook serve` or `logbook mcp` process, so it serves one process: write through `--server` while a server is running, or restart it after local writes.
+
+## Trust settings
+
+```yaml
+trust:
+  verify_policy: {project: writers, team: verifiers}   # under verifiers, only a verifier binding's confirms count
+  min_status: {user: unverified, project: unverified, team: verified}
+  weights: {verified: 1.0, unverified: 0.7, disputed: 0.3, stale: 0.5}
+review_periods: {observation: 720h, fact: 4320h, procedure: 4320h, decision: 8760h, preference: 0s}
+forget_retention: 720h   # forgotten memories are purged after this
+```
+
+With `min_status: {team: verified}`, recall leaves out team memories nobody has confirmed, unless the caller asks for `min_status: unverified`. Give a reviewer the `verifier` role with `logbook binding add user:alice verifier team:platform`.
+
 ## Part of a bigger stack
 
 logbook is one of four projects that work alone and fit together, described in the [mothership contract](https://github.com/raven-clown/mothership/blob/main/CONTRACT.md):
@@ -154,9 +197,10 @@ None of them is required.
 
 1. **Core** (released in v0.1.0): memory model, trust states, corrections, staleness, SQLite with migrations, MCP over stdio, CLI.
 2. **Server** (released in v0.1.0): Streamable HTTP, REST under `/v1/`, OIDC and API keys, role bindings, metrics and traces.
-3. **Admin API:** settings, API keys, access, audit, usage counts and jobs under `/admin/v1/`, with an OpenAPI file, so a web console can run logbook end to end.
+3. **Models** (released in v0.2.0): embeddings, fact extraction and contradiction checks through any OpenAI-compatible endpoint, verify policies and per-scope-type trust settings.
 4. **Postgres:** pgvector, several replicas.
-5. **Models:** embeddings, fact extraction and contradiction checks through any OpenAI-compatible endpoint.
+5. **Admin API:** settings, API keys, access, audit, usage counts and jobs under `/admin/v1/`, with an OpenAPI file, so a web console can run logbook end to end.
+6. **Limits:** the shared `memory.` and `requests` profiles, and the shared metric names.
 
 ## Help build it
 

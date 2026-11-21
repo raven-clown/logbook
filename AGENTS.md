@@ -19,6 +19,7 @@ go run ./cmd/logbook mcp           # MCP over stdio on ./logbook.db
 go run ./cmd/logbook serve         # HTTP on :8420: /mcp, /v1/, /healthz, /readyz, /metrics
 go run ./cmd/logbook key create dev
 go run ./cmd/logbook recall "query"
+go run ./cmd/logbook reindex       # embed again after changing the embedding model
 ```
 
 `LOGBOOK_NOW` (an RFC 3339 time) fixes the clock of the `logbook` command. It exists for tests and recorded demos; do not use it anywhere else.
@@ -27,7 +28,7 @@ go run ./cmd/logbook recall "query"
 
 ## Layout
 
-The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `admin` (API keys and bindings), `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`, `importer`, `importer/jsonl`, `internal/config`, `internal/httpx`, `internal/identity`, `internal/mcpserver`, `internal/obs`, `internal/rest`, `internal/wire`. The rest is planned.
+The layout from `docs/design.md` section 5. Built so far: `cmd/logbook`, `admin` (API keys and bindings), `memory`, `staleness`, `store`, `store/migrate`, `store/sqlite`, `store/storetest`, `vector`, `vector/memory`, `embed`, `embed/openai`, `extract`, `extract/openai`, `importer`, `importer/jsonl`, `internal/config`, `internal/httpx`, `internal/identity`, `internal/mcpserver`, `internal/oai` (the HTTP client both OpenAI-compatible plugins share), `internal/obs`, `internal/outbound` (headers sent to the models), `internal/rest`, `internal/testutil` (fake embedder and extractor for tests), `internal/wire`. The rest is planned.
 
 | Package | Holds |
 |---|---|

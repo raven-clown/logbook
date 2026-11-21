@@ -530,6 +530,17 @@ Decided while building milestone 2:
 22. MCP over Streamable HTTP runs without sessions, so any replica can answer any request.
 23. Until the admin API lands, keys and bindings are managed with `logbook key` and `logbook binding` on the server's database.
 
+Decided while building v0.2.0:
+
+24. The caller's token goes to the embedder and extractor only when that client sets `forward_token: true`, and a logbook API key is never forwarded; otherwise the client sends its own `api_key`. This follows the contract's rule for airlock: forwarding to a service outside the stack is opt-in. Set it for transponder.
+25. Vectors are stored per memory and model key. The key is the model name, plus `@<dimensions>` when `dimensions` is set, so changing either starts a fresh set and `logbook reindex` drops the old one.
+26. The in-process vector index loads an organisation's vectors on its first search, not at startup, so one-shot commands stay fast.
+27. Neighbours for `related` edges and the contradiction check come from the new memory's own scope and must be active.
+28. The backfill and purge loops run inside `logbook serve` and `logbook mcp` and select their work from the memory tables, so v0.2.0 has no jobs table. It arrives with the admin API.
+29. The verify policy and default `min_status` are set per scope type in config. `verifiers` applies to project and team scopes only. Per-scope overrides arrive with `PATCH scopes`.
+30. A recall request with no `min_status` takes each scope's default, and an explicit `min_status: unverified` overrides a default of `verified`.
+31. `/readyz` reports the embedder as `not configured`, `unknown`, `ok` or `failing` from its last real call, so a readiness probe never calls the model.
+
 ## 13. Settled questions
 
 Settled in the contract at 1ed968a, or by the user on review:

@@ -4,6 +4,22 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- Embeddings through any OpenAI-compatible `/v1/embeddings` endpoint (`embedder` settings). Recall fuses full-text and vector results, so it finds memories by meaning.
+- `remember` with `extract: true` stores up to 10 facts pulled out of raw text through any OpenAI-compatible `/v1/chat/completions` endpoint (`extractor` settings), each with `source: extracted` and its sentence as evidence.
+- New memories get `related` links to up to three near neighbours in their scope. A memory without a `subject` that the extractor finds contradicts a close neighbour marks the older one `disputed`.
+- A background loop in `logbook serve` and `logbook mcp` embeds memories whose embedding failed, and `logbook reindex` embeds every memory again after a model change.
+- Verify policies per scope type: under `trust.verify_policy.team: verifiers`, only confirms from a `verifier` binding count.
+- A default `min_status` per scope type, so a team scope can return verified memories only.
+- Trust weights, review periods and `forget_retention` can be set in the config file and environment.
+- Forgotten memories are purged after `forget_retention`, 30 days by default.
+- The embedder and extractor forward `X-Request-ID` and the W3C trace context, and the caller's OIDC token when `forward_token` is set. logbook API keys are never forwarded.
+
+### Changed
+
+- `/readyz` reports `embedder` and `extractor` in place of `transponder`.
+
 ## [0.1.1] - 2026-11-05
 
 ### Fixed
