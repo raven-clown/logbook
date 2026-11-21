@@ -158,6 +158,15 @@ type Event struct {
 	Detail   json.RawMessage `json:"detail,omitempty"`
 }
 
+// Candidate is one fact an extractor pulled out of raw text.
+type Candidate struct {
+	Content string `json:"content"`
+	Kind    Kind   `json:"kind"`
+	Subject string `json:"subject,omitempty"`
+	// Evidence is the sentence the fact came from.
+	Evidence string `json:"evidence,omitempty"`
+}
+
 // Hit is a search result before ranking rules are applied.
 type Hit struct {
 	ID    string

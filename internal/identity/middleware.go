@@ -3,6 +3,8 @@ package identity
 import (
 	"net/http"
 	"strings"
+
+	"github.com/raven-clown/logbook/internal/outbound"
 )
 
 // Bearer returns the token from an Authorization: Bearer header, or "".
@@ -19,12 +21,14 @@ func Bearer(h http.Header) string {
 func Middleware(r *Resolver, fail func(w http.ResponseWriter, req *http.Request, err error)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			c, err := r.Authenticate(req.Context(), Bearer(req.Header))
+			token := Bearer(req.Header)
+			c, err := r.Authenticate(req.Context(), token)
 			if err != nil {
 				fail(w, req, err)
 				return
 			}
-			next.ServeHTTP(w, req.WithContext(WithCaller(req.Context(), c)))
+			ctx := outbound.WithToken(WithCaller(req.Context(), c), token)
+			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	}
 }

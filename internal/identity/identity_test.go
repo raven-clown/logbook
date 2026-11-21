@@ -19,6 +19,7 @@ import (
 	"github.com/raven-clown/logbook/admin"
 	"github.com/raven-clown/logbook/internal/config"
 	"github.com/raven-clown/logbook/internal/identity"
+	"github.com/raven-clown/logbook/internal/outbound"
 	"github.com/raven-clown/logbook/memory"
 	"github.com/raven-clown/logbook/store/sqlite"
 )
@@ -374,6 +375,9 @@ func TestMiddleware(t *testing.T) {
 		c, ok := identity.FromContext(r.Context())
 		if !ok || c.Principal.Subject != "key:ci" {
 			t.Errorf("caller in handler = %+v, %v", c, ok)
+		}
+		if tok := outbound.Token(r.Context()); tok != "" {
+			t.Errorf("a logbook key was kept for forwarding: %q", tok)
 		}
 	}))
 	for _, tt := range []struct {
