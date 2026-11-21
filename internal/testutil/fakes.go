@@ -16,8 +16,11 @@ import (
 // BagOfWords is an embedder that hashes lower-cased words into Dims buckets
 // and normalises the result, so texts that share words are similar.
 type BagOfWords struct {
-	Dims  int
-	mu    sync.Mutex
+	Dims int
+	// Synonyms maps a word to the word whose bucket it shares, so a query can
+	// match by meaning where full-text search finds nothing.
+	Synonyms map[string]string
+	mu       sync.Mutex
 	err   error
 	block bool
 	calls int
@@ -50,9 +53,22 @@ func (b *BagOfWords) Embed(ctx context.Context, texts []string) ([][]float32, er
 	}
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
-		out[i] = Vector(t, b.dims())
+		out[i] = b.vector(t)
 	}
 	return out, nil
+}
+
+func (b *BagOfWords) vector(text string) []float32 {
+	if len(b.Synonyms) == 0 {
+		return Vector(text, b.dims())
+	}
+	words := strings.Fields(strings.ToLower(text))
+	for i, w := range words {
+		if s, ok := b.Synonyms[strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })]; ok {
+			words[i] = s
+		}
+	}
+	return Vector(strings.Join(words, " "), b.dims())
 }
 
 func (b *BagOfWords) dims() int {

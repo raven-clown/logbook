@@ -49,6 +49,9 @@ func (s *Service) Forget(ctx context.Context, p Principal, r ForgetRequest) (*Me
 		if err := st.Update(ctx, m); err != nil {
 			return err
 		}
+		if err := s.dropVectors(ctx, st, m); err != nil {
+			return err
+		}
 		var detail map[string]any
 		if r.Reason != "" {
 			detail = map[string]any{"reason": r.Reason}
@@ -59,6 +62,9 @@ func (s *Service) Forget(ctx context.Context, p Principal, r ForgetRequest) (*Me
 		out = m
 		return nil
 	})
+	if err == nil {
+		s.forgetVector(ctx, out)
+	}
 	return out, err
 }
 
@@ -89,6 +95,9 @@ func (s *Service) PurgeForgotten(ctx context.Context, orgID string, retention ti
 				wipe(m)
 				m.UpdatedAt = s.clock()
 				if err := st.Update(ctx, m); err != nil {
+					return err
+				}
+				if err := s.dropVectors(ctx, st, m); err != nil {
 					return err
 				}
 				return st.AppendEvent(ctx, Event{OrgID: orgID, MemoryID: m.ID, Action: "purged", Actor: jobAuthor, At: s.clock()})

@@ -3,6 +3,7 @@ package memory
 import (
 	"cmp"
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -97,7 +98,12 @@ func (s *Service) Recall(ctx context.Context, p Principal, r RecallRequest) (*Re
 	if err != nil {
 		return nil, err
 	}
-	cands, err := s.candidates(ctx, p, Fuse(rrfK, hits), r.AsOf.IsZero())
+	known := map[string]*Memory{}
+	vhits, degraded, err := s.searchVectors(ctx, query, f, known)
+	if err != nil {
+		return nil, err
+	}
+	cands, err := s.candidates(ctx, p, Fuse(rrfK, hits, vhits), r.AsOf.IsZero(), known)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +116,43 @@ func (s *Service) Recall(ctx context.Context, p Principal, r RecallRequest) (*Re
 			return nil, err
 		}
 	}
-	return &RecallResult{Results: results}, nil
+	return &RecallResult{Results: results, Degraded: degraded}, nil
+}
+
+// searchVectors embeds the query and returns the nearest memories that pass f,
+// best first. Memories it read are left in known. A failing embedder or index
+// is reported as degraded, not as an error.
+func (s *Service) searchVectors(ctx context.Context, query string, f Filter, known map[string]*Memory) ([]Hit, []string, error) {
+	if !s.vectorsOn() {
+		return nil, nil, nil
+	}
+	vs, err := s.embed(ctx, s.budgets.Query, []string{query})
+	if err != nil {
+		return nil, []string{DegradedEmbeddings}, nil
+	}
+	hits, err := s.index.Search(ctx, f.OrgID, f.Scopes, vs[0], searchCandidates)
+	if err != nil {
+		slog.WarnContext(ctx, "vector search failed", "err", err)
+		return nil, []string{DegradedEmbeddings}, nil
+	}
+	var out []Hit
+	for _, h := range hits {
+		if h.Score <= 0 {
+			continue
+		}
+		m, err := s.store.Get(ctx, f.OrgID, h.ID)
+		if CodeOf(err) == CodeNotFound {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if matches(m, f) {
+			known[m.ID] = m
+			out = append(out, h)
+		}
+	}
+	return out, nil, nil
 }
 
 func recallLimit(n int) (int, error) {
@@ -160,13 +202,16 @@ func requestedScopes(p Principal, requested []string, project, team string) ([]s
 	return out, nil
 }
 
-func (s *Service) candidates(ctx context.Context, p Principal, hits []Hit, swap bool) ([]*candidate, error) {
+func (s *Service) candidates(ctx context.Context, p Principal, hits []Hit, swap bool, known map[string]*Memory) ([]*candidate, error) {
 	byID := map[string]*candidate{}
 	var order []string
 	for _, h := range hits {
-		m, err := s.store.Get(ctx, p.OrgID, h.ID)
-		if err != nil {
-			return nil, err
+		m := known[h.ID]
+		if m == nil {
+			var err error
+			if m, err = s.store.Get(ctx, p.OrgID, h.ID); err != nil {
+				return nil, err
+			}
 		}
 		c := &candidate{m: m, score: h.Score, direct: true}
 		if swap && m.Status == StatusSuperseded {

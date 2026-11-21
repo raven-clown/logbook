@@ -39,6 +39,13 @@ type Options struct {
 	VerifyPolicy map[ScopeType]Policy
 	// MinStatus is the status recall requires in each scope type when the request names none.
 	MinStatus map[ScopeType]Status
+	// Embedder and Index turn on vector search when both are set and the Store
+	// implements EmbeddingStore.
+	Embedder Embedder
+	Index    Index
+	// Extractor turns on remember with extract and the contradiction check.
+	Extractor Extractor
+	Budgets   Budgets
 }
 
 // Service implements remember, recall, verify, forget and list on top of a Store.
@@ -51,6 +58,12 @@ type Service struct {
 	weights   Weights
 	policy    map[ScopeType]Policy
 	minStatus map[ScopeType]Status
+	embedder  Embedder
+	index     Index
+	extractor Extractor
+	budgets   Budgets
+	// embedState is stateUnknown, stateOK or stateFailing, from the last embedder call.
+	embedState int32
 }
 
 // NewService returns a Service on s.
@@ -58,6 +71,7 @@ func NewService(s Store, o Options) *Service {
 	svc := &Service{
 		store: s, now: o.Now, newID: o.NewID, rules: o.Rules, periods: o.ReviewPeriods, weights: o.Weights,
 		policy: o.VerifyPolicy, minStatus: o.MinStatus,
+		embedder: o.Embedder, index: o.Index, extractor: o.Extractor, budgets: o.Budgets.withDefaults(),
 	}
 	if svc.now == nil {
 		svc.now = time.Now
