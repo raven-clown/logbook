@@ -120,7 +120,7 @@ func TestRememberExtractErrors(t *testing.T) {
 		{"extractor fails", &testutil.FakeExtractor{Err: errors.New("model overloaded")}, memory.RememberRequest{Content: "text", Extract: true}, memory.CodeUnavailable, ""},
 		{"corrects", &testutil.FakeExtractor{}, memory.RememberRequest{Content: "text", Extract: true, Corrects: "mem_1"}, memory.CodeInvalidArgument, "corrects"},
 		{"empty", &testutil.FakeExtractor{}, memory.RememberRequest{Content: " ", Extract: true}, memory.CodeInvalidArgument, "content"},
-		{"bad kind", &testutil.FakeExtractor{}, memory.RememberRequest{Content: "text", Extract: true, Kind: "decison"}, memory.CodeInvalidArgument, "kind"},
+		{"bad kind", &testutil.FakeExtractor{}, memory.RememberRequest{Content: "text", Extract: true, Kind: "banana"}, memory.CodeInvalidArgument, "kind"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var opts []func(*memory.Options)
