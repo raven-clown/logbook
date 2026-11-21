@@ -85,9 +85,9 @@ func message(data []byte) string {
 }
 
 func truncate(s string) string {
-	const max = 300
-	if len(s) > max {
-		return s[:max] + "..."
+	const limit = 300
+	if len(s) > limit {
+		return s[:limit] + "..."
 	}
 	if s == "" {
 		return "no message"
