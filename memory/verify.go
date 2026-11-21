@@ -36,7 +36,11 @@ func (s *Service) Verify(ctx context.Context, p Principal, r VerifyRequest) (*Ve
 		}
 		now := s.clock()
 		v := &Verification{OrgID: p.OrgID, MemoryID: m.ID, Verifier: p.Author(), Verdict: r.Verdict, Note: r.Note, At: now}
-		if err := ApplyVerdict(m, v, now, s.periods[m.Kind]); err != nil {
+		if r.Verdict == VerdictConfirm && s.policy[sc.Type] == PolicyVerifiers && !p.CanCount(sc) {
+			if err := verifiable(m); err != nil {
+				return err
+			}
+		} else if err := ApplyVerdict(m, v, now, s.periods[m.Kind]); err != nil {
 			return err
 		}
 		m.UpdatedAt = now

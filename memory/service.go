@@ -17,6 +17,17 @@ type Weights struct {
 // DefaultWeights are the trust weights from the design.
 var DefaultWeights = Weights{Verified: 1.0, Unverified: 0.7, Disputed: 0.3, Stale: 0.5}
 
+// Policy says whose confirms count in a scope.
+type Policy string
+
+// The verify policies.
+const (
+	// PolicyWriters counts a confirm from anyone who may write to the scope.
+	PolicyWriters Policy = "writers"
+	// PolicyVerifiers counts only confirms from principals with a verifier binding on the scope.
+	PolicyVerifiers Policy = "verifiers"
+)
+
 // Options configure a Service. Zero values take the defaults.
 type Options struct {
 	Now           func() time.Time
@@ -24,21 +35,30 @@ type Options struct {
 	Rules         []Rule
 	ReviewPeriods map[Kind]time.Duration
 	Weights       Weights
+	// VerifyPolicy per scope type; a missing type means writers.
+	VerifyPolicy map[ScopeType]Policy
+	// MinStatus is the status recall requires in each scope type when the request names none.
+	MinStatus map[ScopeType]Status
 }
 
 // Service implements remember, recall, verify, forget and list on top of a Store.
 type Service struct {
-	store   Store
-	now     func() time.Time
-	newID   func() string
-	rules   []Rule
-	periods map[Kind]time.Duration
-	weights Weights
+	store     Store
+	now       func() time.Time
+	newID     func() string
+	rules     []Rule
+	periods   map[Kind]time.Duration
+	weights   Weights
+	policy    map[ScopeType]Policy
+	minStatus map[ScopeType]Status
 }
 
 // NewService returns a Service on s.
 func NewService(s Store, o Options) *Service {
-	svc := &Service{store: s, now: o.Now, newID: o.NewID, rules: o.Rules, periods: o.ReviewPeriods, weights: o.Weights}
+	svc := &Service{
+		store: s, now: o.Now, newID: o.NewID, rules: o.Rules, periods: o.ReviewPeriods, weights: o.Weights,
+		policy: o.VerifyPolicy, minStatus: o.MinStatus,
+	}
 	if svc.now == nil {
 		svc.now = time.Now
 	}

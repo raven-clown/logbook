@@ -304,6 +304,23 @@ func TestBindingsGrantAccess(t *testing.T) {
 	}
 }
 
+func TestVerifierBinding(t *testing.T) {
+	st := openStore(t)
+	plain := addKey(t, st)
+	bind(t, st, "key:ci", admin.RoleVerifier, "team:platform")
+	bind(t, st, "key:ci", admin.RoleVerifier, "project:*")
+	c, err := resolver(t, st, nil, nil).Authenticate(context.Background(), plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := slices.Sorted(slices.Values(c.Principal.Verifies)); !slices.Equal(got, []string{"project:*", "team:platform"}) {
+		t.Fatalf("verifies = %v", c.Principal.Verifies)
+	}
+	if len(c.Principal.Teams) != 0 || c.Principal.AllProjects {
+		t.Fatalf("a verifier binding granted access: %+v", c.Principal)
+	}
+}
+
 func TestGroupBinding(t *testing.T) {
 	p := newIDP(t)
 	st := openStore(t)

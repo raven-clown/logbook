@@ -243,7 +243,7 @@ func (s *Service) rank(ctx context.Context, cands []*candidate, r RecallRequest,
 		if stale && r.ExcludeStale {
 			continue
 		}
-		if r.MinStatus == StatusVerified && c.m.Status != StatusVerified {
+		if s.requiresVerified(r.MinStatus, c.m.Scope) && c.m.Status != StatusVerified {
 			continue
 		}
 		score := c.score * s.weight(c.m.Status)
@@ -262,6 +262,16 @@ func (s *Service) rank(ctx context.Context, cands []*candidate, r RecallRequest,
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// requiresVerified applies the request's min_status, or the scope type's default
+// when the request names none.
+func (s *Service) requiresVerified(req Status, scope string) bool {
+	if req != "" {
+		return req == StatusVerified
+	}
+	typ, _, _ := strings.Cut(scope, ":")
+	return s.minStatus[ScopeType(typ)] == StatusVerified
 }
 
 func (s *Service) attachLinks(ctx context.Context, p Principal, results []Recalled) error {

@@ -20,6 +20,13 @@ func ReviewAfter(t time.Time, k Kind, periods map[Kind]time.Duration) time.Time 
 	return t.Add(d)
 }
 
+func verifiable(m *Memory) error {
+	if !m.Status.Active() {
+		return Errorf(CodeConflict, "", "memory %s is %s and cannot be verified", m.ID, m.Status)
+	}
+	return nil
+}
+
 // ApplyVerdict applies v to m and sets v.Counted. A confirm from the author's own
 // subject over the author's own channel is kept but not counted, so an agent cannot
 // vouch for its own write. Disputes always count.
@@ -27,8 +34,8 @@ func ApplyVerdict(m *Memory, v *Verification, now time.Time, period time.Duratio
 	if v.Verdict != VerdictConfirm && v.Verdict != VerdictDispute {
 		return Errorf(CodeInvalidArgument, "verdict", "verdict must be confirm or dispute, not %q", v.Verdict)
 	}
-	if !m.Status.Active() {
-		return Errorf(CodeConflict, "", "memory %s is %s and cannot be verified", m.ID, m.Status)
+	if err := verifiable(m); err != nil {
+		return err
 	}
 	if v.Verdict == VerdictDispute {
 		v.Counted = true

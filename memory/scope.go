@@ -68,9 +68,11 @@ type Principal struct {
 	AllTeams, AllProjects bool
 	// RestrictProjects is set in restricted project mode.
 	RestrictProjects bool
-	Project          string
-	Channel          Channel
-	Client           string
+	// Verifies lists the scopes, or project:* and team:*, where the principal holds a verifier binding.
+	Verifies []string
+	Project  string
+	Channel  Channel
+	Client   string
 }
 
 // CanRead reports whether the principal may read memories in s.
@@ -84,6 +86,15 @@ func (p Principal) CanRead(s Scope) bool {
 		return p.AllTeams || slices.Contains(p.Teams, s.ID)
 	}
 	return false
+}
+
+// CanCount reports whether the principal's confirms count in s under the
+// verifiers policy.
+func (p Principal) CanCount(s Scope) bool {
+	if s.Type == ScopeUser {
+		return false
+	}
+	return slices.Contains(p.Verifies, s.String()) || slices.Contains(p.Verifies, string(s.Type)+":*")
 }
 
 // CanWrite reports whether the principal may write memories in s.

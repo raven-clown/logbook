@@ -20,7 +20,7 @@ type fixture struct {
 
 func (f *fixture) advance(d time.Duration) { f.now = f.now.Add(d) }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, opts ...func(*memory.Options)) *fixture {
 	t.Helper()
 	st, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "logbook.db"))
 	if err != nil {
@@ -29,11 +29,15 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(func() { _ = st.Close() })
 	f := &fixture{store: st, now: day0}
 	n := 0
-	f.svc = memory.NewService(st, memory.Options{
+	o := memory.Options{
 		Now:   func() time.Time { return f.now },
 		NewID: func() string { n++; return fmt.Sprintf("mem_%d", n) },
 		Rules: staleness.Default(),
-	})
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	f.svc = memory.NewService(st, o)
 	return f
 }
 

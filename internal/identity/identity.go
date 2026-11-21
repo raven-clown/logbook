@@ -156,6 +156,10 @@ func (r *Resolver) caller(ctx context.Context, subject, principal string, teams,
 		switch b.Role {
 		case admin.RoleAdmin, admin.RoleViewer:
 			c.addRole(b.Role)
+		case admin.RoleVerifier:
+			if !slices.Contains(p.Verifies, b.Target) {
+				p.Verifies = append(p.Verifies, b.Target)
+			}
 		case admin.RoleMember:
 			switch typ, id, _ := strings.Cut(b.Target, ":"); {
 			case b.Target == "team:*":
