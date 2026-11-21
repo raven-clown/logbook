@@ -87,6 +87,9 @@ func (s *Service) rememberExtracted(ctx context.Context, p Principal, r Remember
 	if err != nil {
 		return nil, err
 	}
+	if _, err := ParseKind(string(r.Kind)); err != nil {
+		return nil, err
+	}
 	if err := validMeta(r); err != nil {
 		return nil, err
 	}

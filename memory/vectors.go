@@ -78,8 +78,10 @@ const (
 	maxRelated           = 3
 	contradictSimilarity = 0.85
 	maxContradictChecks  = 3
-	neighbourCandidates  = 10
-	backfillBudget       = 30 * time.Second
+	// neighbourCandidates is generous because the index also holds superseded
+	// memories, which prepare skips.
+	neighbourCandidates = 30
+	backfillBudget      = 30 * time.Second
 )
 
 // Degraded names reported when a model call is skipped.
