@@ -23,9 +23,9 @@ type BagOfWords struct {
 	// OnEmbed runs inside every successful call, before it returns.
 	OnEmbed func(texts []string)
 	mu      sync.Mutex
-	err      error
-	block    bool
-	calls    int
+	err     error
+	block   bool
+	calls   int
 }
 
 // SetErr makes every call fail with err, or work again with nil.
