@@ -11,7 +11,9 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,6 +27,13 @@ type Config struct {
 	DefaultProject string    `yaml:"default_project"`
 	Auth           Auth      `yaml:"auth"`
 	Telemetry      Telemetry `yaml:"telemetry"`
+	Embedder       Embedder  `yaml:"embedder"`
+	Extractor      Extractor `yaml:"extractor"`
+	Trust          Trust     `yaml:"trust"`
+	// ReviewPeriods set when each kind of memory becomes stale.
+	ReviewPeriods ReviewPeriods `yaml:"review_periods"`
+	// ForgetRetention is how long a forgotten memory keeps its content before it is purged.
+	ForgetRetention time.Duration `yaml:"forget_retention"`
 }
 
 // Auth says how callers are identified.
@@ -59,9 +68,12 @@ type Database struct {
 // working directory.
 func Default() Config {
 	return Config{
-		ListenAddr: ":8420",
-		Database:   Database{Driver: "sqlite", DSN: "logbook.db"},
-		Auth:       Auth{ProjectMode: "open", OIDC: OIDC{TeamsClaim: "groups"}},
+		ListenAddr:      ":8420",
+		Database:        Database{Driver: "sqlite", DSN: "logbook.db"},
+		Auth:            Auth{ProjectMode: "open", OIDC: OIDC{TeamsClaim: "groups"}},
+		Trust:           defaultTrust(),
+		ReviewPeriods:   defaultReviewPeriods(),
+		ForgetRetention: 720 * time.Hour,
 	}
 }
 
@@ -120,7 +132,10 @@ func (c Config) Validate() error {
 	if c.PublicURL != "" && !isHTTPURL(c.PublicURL) {
 		return fmt.Errorf("public_url must be an http or https URL, not %q", c.PublicURL)
 	}
-	return nil
+	if err := c.validateModels(); err != nil {
+		return err
+	}
+	return c.validateTrust()
 }
 
 func isHTTPURL(s string) bool {
@@ -146,8 +161,34 @@ func set(v reflect.Value, keys []string, value string) error {
 	return fmt.Errorf("no config key %q", keys[0])
 }
 
+var durationType = reflect.TypeFor[time.Duration]()
+
 func assign(f reflect.Value, value string) error {
 	switch {
+	case f.Type() == durationType:
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("must be a duration such as 720h: %w", err)
+		}
+		f.SetInt(int64(d))
+	case f.Kind() == reflect.Bool:
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("must be true or false, not %q", value)
+		}
+		f.SetBool(b)
+	case f.Kind() == reflect.Int:
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("must be a whole number, not %q", value)
+		}
+		f.SetInt(int64(n))
+	case f.Kind() == reflect.Float64:
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("must be a number, not %q", value)
+		}
+		f.SetFloat(n)
 	case f.Kind() == reflect.String:
 		f.SetString(value)
 	case f.Kind() == reflect.Slice && f.Type().Elem().Kind() == reflect.String:
