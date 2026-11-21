@@ -99,6 +99,8 @@ func TestExtractBadAnswers(t *testing.T) {
 		"not json":     "Sure! Here are the facts: CI runs Go.",
 		"wrong shape":  `{"facts":"CI runs Go"}`,
 		"empty answer": "",
+		"no facts":     `{}`,
+		"null":         `null`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			x, _ := chat(t, content)
@@ -130,6 +132,17 @@ func TestContradicts(t *testing.T) {
 		if s.body.ResponseFormat.JSONSchema.Name != "memory_contradiction" || !strings.Contains(s.body.Messages[1].Content, "CI runs Go 1.25") {
 			t.Fatalf("request = %+v", s.body)
 		}
+	}
+}
+
+func TestContradictsNeedsTheField(t *testing.T) {
+	x, _ := chat(t, `{}`)
+	if _, err := x.Contradicts(context.Background(), "a", "b"); err == nil {
+		t.Fatal("an answer without contradicts was taken as false")
+	}
+	x, _ = chat(t, `{"facts":[]}`)
+	if got, err := x.Extract(context.Background(), "hello"); err != nil || len(got) != 0 {
+		t.Fatalf("an empty facts list = %v, %v", got, err)
 	}
 }
 

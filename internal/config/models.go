@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -112,7 +113,7 @@ func (c Config) validateTrust() error {
 	}
 	w := t.Weights
 	for key, v := range map[string]float64{"verified": w.Verified, "unverified": w.Unverified, "disputed": w.Disputed, "stale": w.Stale} {
-		if v < 0 || v > 1 {
+		if math.IsNaN(v) || v < 0 || v > 1 {
 			return fmt.Errorf("trust.weights.%s must be between 0 and 1, not %v", key, v)
 		}
 	}

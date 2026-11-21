@@ -27,14 +27,14 @@ func TestPost(t *testing.T) {
 }
 
 func TestPostErrors(t *testing.T) {
-	long := strings.Repeat("x", 400)
 	for _, tt := range []struct {
 		name, answer, want string
 		status             int
 	}{
-		{"error message", `{"error":{"message":"rate limited"}}`, "429: rate limited", 429},
-		{"long body cut", long, strings.Repeat("x", 300) + "...", 500},
-		{"empty body", ``, "no message", 503},
+		{"error code", `{"error":{"message":"slow down","code":"rate_limit_exceeded"}}`, "429 (rate_limit_exceeded)", 429},
+		{"error type", `{"error":{"message":"x","type":"server_error","code":null}}`, "500 (server_error)", 500},
+		{"plain body", `upstream down`, "502 (no error code)", 502},
+		{"empty body", ``, "503 (no error code)", 503},
 		{"not json", `nope`, "not valid JSON", 200},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -49,6 +49,37 @@ func TestPostErrors(t *testing.T) {
 				t.Fatalf("err = %v, want one containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestPostKeepsEchoedTextOutOfErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad input: ` + strings.ReplaceAll(string(b), `"`, `'`) + `","code":"the vpn password is hunter2"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	var out any
+	err := oai.Endpoint{BaseURL: srv.URL}.Post(context.Background(), "/x", map[string]string{"input": "the vpn password is hunter2"}, &out)
+	if err == nil || strings.Contains(err.Error(), "hunter2") || !strings.Contains(err.Error(), "400 (no error code)") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPostFollowsNoRedirect(t *testing.T) {
+	var got string
+	target := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r.Header.Get("Authorization") }))
+	t.Cleanup(target.Close)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/x", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	client := srv.Client()
+	client.CheckRedirect = oai.DefaultClient.CheckRedirect
+	var out any
+	err := oai.Endpoint{BaseURL: srv.URL, APIKey: "sk-secret", Client: client}.Post(context.Background(), "/x", 1, &out)
+	if err == nil || !strings.Contains(err.Error(), "307") || got != "" {
+		t.Fatalf("err = %v, the http target saw Authorization %q", err, got)
 	}
 }
 

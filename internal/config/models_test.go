@@ -120,6 +120,8 @@ func TestValidateModelsAndTrust(t *testing.T) {
 		{"min status", []string{"LOGBOOK_TRUST__MIN_STATUS__USER=disputed"}, "trust.min_status.user"},
 		{"weight low", []string{"LOGBOOK_TRUST__WEIGHTS__DISPUTED=-0.1"}, "trust.weights.disputed"},
 		{"weight high", []string{"LOGBOOK_TRUST__WEIGHTS__VERIFIED=1.5"}, "trust.weights.verified"},
+		{"weight nan", []string{"LOGBOOK_TRUST__WEIGHTS__STALE=NaN"}, "trust.weights.stale"},
+		{"weight inf", []string{"LOGBOOK_TRUST__WEIGHTS__STALE=+Inf"}, "trust.weights.stale"},
 		{"period", []string{"LOGBOOK_REVIEW_PERIODS__DECISION=-1h"}, "review_periods.decision"},
 		{"retention", []string{"LOGBOOK_FORGET_RETENTION=-1h"}, "forget_retention"},
 	} {
@@ -132,5 +134,8 @@ func TestValidateModelsAndTrust(t *testing.T) {
 	}
 	if _, err := config.Load("", model); err != nil {
 		t.Fatalf("valid embedder rejected: %v", err)
+	}
+	if _, err := config.Load("", []string{"LOGBOOK_TRUST__WEIGHTS__STALE=0", "LOGBOOK_TRUST__WEIGHTS__DISPUTED=1"}); err != nil {
+		t.Fatalf("weights of 0 and 1 rejected: %v", err)
 	}
 }

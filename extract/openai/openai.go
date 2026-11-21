@@ -124,13 +124,16 @@ func (c *Client) ask(ctx context.Context, name string, schema map[string]any, sy
 // becomes fact and a subject or evidence over its limit is dropped.
 func (c *Client) Extract(ctx context.Context, text string) ([]memory.Candidate, error) {
 	var out struct {
-		Facts []memory.Candidate `json:"facts"`
+		Facts *[]memory.Candidate `json:"facts"`
 	}
 	if err := c.ask(ctx, "memory_facts", factsSchema, extractPrompt, text, &out); err != nil {
 		return nil, err
 	}
+	if out.Facts == nil {
+		return nil, fmt.Errorf("%w: the extractor's answer has no facts field", oai.ErrShape)
+	}
 	var facts []memory.Candidate
-	for _, f := range out.Facts {
+	for _, f := range *out.Facts {
 		f.Content = strings.TrimSpace(f.Content)
 		if f.Content == "" || len(f.Content) > memory.MaxContentBytes || !utf8.ValidString(f.Content) {
 			continue
@@ -157,11 +160,14 @@ func (c *Client) Extract(ctx context.Context, text string) ([]memory.Candidate, 
 // Contradicts asks whether a and b cannot both be true.
 func (c *Client) Contradicts(ctx context.Context, a, b string) (bool, error) {
 	var out struct {
-		Contradicts bool `json:"contradicts"`
+		Contradicts *bool `json:"contradicts"`
 	}
 	user := "Statement A: " + a + "\nStatement B: " + b
 	if err := c.ask(ctx, "memory_contradiction", contradictSchema, contradictPrompt, user, &out); err != nil {
 		return false, err
 	}
-	return out.Contradicts, nil
+	if out.Contradicts == nil {
+		return false, fmt.Errorf("%w: the extractor's answer has no contradicts field", oai.ErrShape)
+	}
+	return *out.Contradicts, nil
 }

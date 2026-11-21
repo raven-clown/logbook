@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,8 +21,12 @@ import (
 const MaxBody = 16 << 20
 
 // DefaultClient is used when a config names no HTTP client. Callers set tighter
-// budgets through the context.
-var DefaultClient = &http.Client{Timeout: 60 * time.Second}
+// budgets through the context. It follows no redirects, so Authorization is
+// never carried to another URL, such as from https down to http.
+var DefaultClient = &http.Client{
+	Timeout:       60 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // Endpoint is one OpenAI-compatible base URL and how to sign in to it.
 type Endpoint struct {
@@ -32,8 +37,8 @@ type Endpoint struct {
 }
 
 // Post sends body as JSON to path under the base URL and decodes the answer
-// into out. Errors name the status and the endpoint's own message, never the
-// request body.
+// into out. Errors name the status and the endpoint's error code, never its
+// message or the request body, since an endpoint may echo memory text back.
 func (e Endpoint) Post(ctx context.Context, path string, body, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -64,7 +69,7 @@ func (e Endpoint) Post(ctx context.Context, path string, body, out any) error {
 		return fmt.Errorf("the answer from %s is larger than %d bytes", url, MaxBody)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("%s answered %d: %s", url, resp.StatusCode, message(data))
+		return fmt.Errorf("%s answered %d (%s)", url, resp.StatusCode, errorCode(data))
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("the answer from %s is not valid JSON: %w", url, err)
@@ -72,27 +77,26 @@ func (e Endpoint) Post(ctx context.Context, path string, body, out any) error {
 	return nil
 }
 
-func message(data []byte) string {
+var codeRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+
+// errorCode returns the OpenAI-style error code or type, such as
+// rate_limit_exceeded, when it is a short identifier.
+func errorCode(data []byte) string {
 	var e struct {
 		Error struct {
-			Message string `json:"message"`
+			Code any    `json:"code"`
+			Type string `json:"type"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
-		return truncate(e.Error.Message)
+	if json.Unmarshal(data, &e) == nil {
+		if c, ok := e.Error.Code.(string); ok && codeRe.MatchString(c) {
+			return c
+		}
+		if codeRe.MatchString(e.Error.Type) {
+			return e.Error.Type
+		}
 	}
-	return truncate(strings.TrimSpace(string(data)))
-}
-
-func truncate(s string) string {
-	const limit = 300
-	if len(s) > limit {
-		return s[:limit] + "..."
-	}
-	if s == "" {
-		return "no message"
-	}
-	return s
+	return "no error code"
 }
 
 // ErrShape is wrapped by errors about an answer that has the wrong shape.
