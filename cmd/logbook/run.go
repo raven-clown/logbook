@@ -12,7 +12,6 @@ import (
 
 	"github.com/raven-clown/logbook/internal/config"
 	"github.com/raven-clown/logbook/memory"
-	"github.com/raven-clown/logbook/staleness"
 	"github.com/raven-clown/logbook/store"
 )
 
@@ -30,6 +29,7 @@ commands:
   export                           write every memory you can read as JSONL
   key create|list|delete           manage API keys for the server
   binding add|list|delete          grant roles: binding add user:alice member team:platform
+  reindex [--all]                  embed memories again after changing the embedding model
   migrate                          bring the database schema up to date
   version                          print the version
 
@@ -57,7 +57,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	commands := map[string]func([]string) error{
 		"serve": a.serve, "mcp": a.mcp, "remember": a.remember, "recall": a.recall, "list": a.list, "verify": a.verify,
 		"forget": a.forget, "import": a.importCmd, "export": a.export, "migrate": a.migrate, "version": a.version,
-		"key": a.key, "binding": a.binding,
+		"key": a.key, "binding": a.binding, "reindex": a.reindex,
 	}
 	cmd, ok := commands[args[0]]
 	if !ok {
@@ -152,7 +152,13 @@ func (a *app) open(c *common) (*session, error) {
 	if project == "" {
 		project = cfg.DefaultProject
 	}
-	svc := memory.NewService(st, memory.Options{Now: now, Rules: staleness.Default()})
+	opts, err := serviceOptions(cfg, st)
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	opts.Now = now
+	svc := memory.NewService(st, opts)
 	return &session{svc: svc, store: st, cfg: cfg, project: project, now: now}, nil
 }
 

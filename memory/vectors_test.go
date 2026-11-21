@@ -19,7 +19,7 @@ type models struct {
 	idx *vecmem.Index
 }
 
-func newModelFixture(t *testing.T, m *models, opts ...func(*memory.Options)) *fixture {
+func newModelFixture(t *testing.T, m *models) *fixture {
 	t.Helper()
 	if m.emb == nil {
 		m.emb = &testutil.BagOfWords{}
@@ -28,13 +28,13 @@ func newModelFixture(t *testing.T, m *models, opts ...func(*memory.Options)) *fi
 	m.idx = vecmem.New(func(ctx context.Context, org string, fn func(id, scope string, v []float32) error) error {
 		return memory.VectorLoader(f.store, m.emb.Model())(ctx, org, fn)
 	})
-	f = newFixture(t, append([]func(*memory.Options){func(o *memory.Options) {
+	f = newFixture(t, func(o *memory.Options) {
 		o.Embedder, o.Index = m.emb, m.idx
 		if m.ext != nil {
 			o.Extractor = m.ext
 		}
 		o.Budgets = memory.Budgets{Embed: 200 * time.Millisecond, Query: 200 * time.Millisecond, Contradiction: 200 * time.Millisecond}
-	}}, opts...)...)
+	})
 	return f
 }
 
@@ -47,10 +47,11 @@ func (f *fixture) rememberFull(t *testing.T, p memory.Principal, r memory.Rememb
 	return res
 }
 
-func (f *fixture) vectorCount(t *testing.T, model string) int {
+// vectorCount counts the stored vectors of the bag-of-words fake.
+func (f *fixture) vectorCount(t *testing.T) int {
 	t.Helper()
 	n := 0
-	err := memory.VectorLoader(f.store, model)(background, memory.DefaultOrg, func(string, string, []float32) error { n++; return nil })
+	err := memory.VectorLoader(f.store, "bag-of-words")(background, memory.DefaultOrg, func(string, string, []float32) error { n++; return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +79,8 @@ func TestRecallFindsByMeaning(t *testing.T) {
 	f := newModelFixture(t, m)
 	pg := f.remember(t, alice, memory.RememberRequest{Content: "staging runs postgres 17"})
 	f.remember(t, alice, memory.RememberRequest{Content: "lunch is at noon"})
-	if f.vectorCount(t, "bag-of-words") != 2 {
-		t.Fatalf("vectors stored = %d", f.vectorCount(t, "bag-of-words"))
+	if f.vectorCount(t) != 2 {
+		t.Fatalf("vectors stored = %d", f.vectorCount(t))
 	}
 	hits, _ := f.store.SearchText(background, "which database", memory.Filter{OrgID: memory.DefaultOrg, Scopes: []string{"user:alice"}}, 10)
 	if len(hits) != 0 {
@@ -141,7 +142,7 @@ func TestRememberEmbedderDown(t *testing.T) {
 	if !slices.Equal(res.Degraded, []string{"embeddings"}) || f.svc.EmbedderState() != "failing" {
 		t.Fatalf("degraded %v, state %q", res.Degraded, f.svc.EmbedderState())
 	}
-	if f.get(t, res.Memories[0].ID).Content == "" || f.vectorCount(t, "bag-of-words") != 0 {
+	if f.get(t, res.Memories[0].ID).Content == "" || f.vectorCount(t) != 0 {
 		t.Fatal("memory not stored, or a vector was stored")
 	}
 	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 10); err == nil || n != 0 {
@@ -151,8 +152,8 @@ func TestRememberEmbedderDown(t *testing.T) {
 	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 10); err != nil || n != 1 {
 		t.Fatalf("Backfill = %d, %v", n, err)
 	}
-	if f.vectorCount(t, "bag-of-words") != 1 || f.svc.EmbedderState() != "ok" {
-		t.Fatalf("after backfill: %d vectors, state %q", f.vectorCount(t, "bag-of-words"), f.svc.EmbedderState())
+	if f.vectorCount(t) != 1 || f.svc.EmbedderState() != "ok" {
+		t.Fatalf("after backfill: %d vectors, state %q", f.vectorCount(t), f.svc.EmbedderState())
 	}
 	got := f.recall(t, alice, memory.RecallRequest{Query: "s3 cache"})
 	if len(got) != 1 {
@@ -217,7 +218,7 @@ func TestRelatedNeighbours(t *testing.T) {
 }
 
 func TestContradictionCheck(t *testing.T) {
-	ext := &testutil.FakeExtractor{Contradict: func(a, b string) bool { return true }}
+	ext := &testutil.FakeExtractor{Contradict: func(_, _ string) bool { return true }}
 	m := &models{ext: ext}
 	f := newModelFixture(t, m)
 	old := f.remember(t, alice, memory.RememberRequest{Content: "the staging database runs postgres version 16 on the shared cluster"})
@@ -241,7 +242,7 @@ func TestContradictionCheck(t *testing.T) {
 
 func TestContradictionCheckSkips(t *testing.T) {
 	t.Run("a subject uses the subject rule", func(t *testing.T) {
-		ext := &testutil.FakeExtractor{Contradict: func(a, b string) bool { return true }}
+		ext := &testutil.FakeExtractor{Contradict: func(_, _ string) bool { return true }}
 		f := newModelFixture(t, &models{ext: ext})
 		f.remember(t, alice, memory.RememberRequest{Content: "the staging database runs postgres version 16 on the shared cluster"})
 		f.remember(t, alice, memory.RememberRequest{Content: "the staging database runs postgres version 17 on the shared cluster", Subject: "staging.db"})
@@ -259,7 +260,7 @@ func TestContradictionCheckSkips(t *testing.T) {
 		}
 	})
 	t.Run("a correction is not checked against what it corrects", func(t *testing.T) {
-		ext := &testutil.FakeExtractor{Contradict: func(a, b string) bool { return true }}
+		ext := &testutil.FakeExtractor{Contradict: func(_, _ string) bool { return true }}
 		f := newModelFixture(t, &models{ext: ext})
 		old := f.remember(t, alice, memory.RememberRequest{Content: "the staging database runs postgres version 16 on the shared cluster"})
 		res := f.rememberFull(t, alice, memory.RememberRequest{Content: "the staging database runs postgres version 17 on the shared cluster", Corrects: old.ID})
@@ -278,7 +279,7 @@ func TestForgetDropsVector(t *testing.T) {
 	if _, err := f.svc.Forget(background, alice, memory.ForgetRequest{ID: id}); err != nil {
 		t.Fatal(err)
 	}
-	if f.vectorCount(t, "bag-of-words") != 0 {
+	if f.vectorCount(t) != 0 {
 		t.Fatal("vector kept after forget")
 	}
 	hits, err := f.svc.Recall(background, alice, memory.RecallRequest{Query: "build cache s3"})
@@ -300,10 +301,31 @@ func TestDuplicateSkipsEmbedding(t *testing.T) {
 	}
 }
 
+func TestReindex(t *testing.T) {
+	f := newModelFixture(t, &models{})
+	f.remember(t, alice, memory.RememberRequest{Content: "one"})
+	f.remember(t, alice, memory.RememberRequest{Content: "two"})
+	es := f.store.(memory.EmbeddingStore)
+	if err := es.PutEmbedding(background, memory.DefaultOrg, "mem_1", "old-model", []float32{1}); err != nil {
+		t.Fatal(err)
+	}
+	dropped, embedded, err := f.svc.Reindex(background, memory.DefaultOrg, false, 1)
+	if err != nil || dropped != 1 || embedded != 0 {
+		t.Fatalf("Reindex = %d, %d, %v", dropped, embedded, err)
+	}
+	dropped, embedded, err = f.svc.Reindex(background, memory.DefaultOrg, true, 1)
+	if err != nil || dropped != 2 || embedded != 2 || f.vectorCount(t) != 2 {
+		t.Fatalf("Reindex all = %d, %d, %v", dropped, embedded, err)
+	}
+}
+
 func TestNoModelsNothingChanges(t *testing.T) {
 	f := newFixture(t)
-	if f.svc.EmbedderState() != "not configured" {
-		t.Fatalf("state = %q", f.svc.EmbedderState())
+	if f.svc.EmbedderState() != "not configured" || f.svc.ExtractorState() != "not configured" {
+		t.Fatalf("state = %q, %q", f.svc.EmbedderState(), f.svc.ExtractorState())
+	}
+	if _, _, err := f.svc.Reindex(background, memory.DefaultOrg, false, 10); !errors.Is(err, memory.ErrNoEmbedder) {
+		t.Fatalf("Reindex without an embedder = %v", err)
 	}
 	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 10); n != 0 || err != nil {
 		t.Fatalf("Backfill = %d, %v", n, err)

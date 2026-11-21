@@ -187,6 +187,35 @@ func (s *Service) Backfill(ctx context.Context, orgID string, batch int) (int, e
 	}
 }
 
+// ExtractorState is "configured" or "not configured".
+func (s *Service) ExtractorState() string {
+	if s.extractor == nil {
+		return "not configured"
+	}
+	return "configured"
+}
+
+// ErrNoEmbedder is returned by Reindex when no embedder is configured.
+var ErrNoEmbedder = errors.New("no embedder is configured: set embedder.type, embedder.base_url and embedder.model")
+
+// Reindex drops the vectors of other models, or every vector when all is set,
+// and embeds what is missing for the current model. A process with an
+// in-memory index must restart afterwards to forget the dropped vectors.
+func (s *Service) Reindex(ctx context.Context, orgID string, all bool, batch int) (dropped, embedded int, err error) {
+	if !s.vectorsOn() {
+		return 0, 0, ErrNoEmbedder
+	}
+	keep := s.embedder.Model()
+	if all {
+		keep = ""
+	}
+	if dropped, err = s.store.(EmbeddingStore).DropEmbeddings(ctx, orgID, keep); err != nil {
+		return 0, 0, err
+	}
+	embedded, err = s.Backfill(ctx, orgID, batch)
+	return dropped, embedded, err
+}
+
 // matches applies the parts of f that the text search applies in SQL, for hits
 // that come from the vector index.
 func matches(m *Memory, f Filter) bool {

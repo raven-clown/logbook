@@ -6,8 +6,11 @@ import (
 	"context"
 	"os"
 
+	_ "github.com/raven-clown/logbook/embed/openai"
+	_ "github.com/raven-clown/logbook/extract/openai"
 	_ "github.com/raven-clown/logbook/importer/jsonl"
 	_ "github.com/raven-clown/logbook/store/sqlite"
+	_ "github.com/raven-clown/logbook/vector/memory"
 )
 
 func main() {

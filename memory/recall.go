@@ -128,7 +128,7 @@ func (s *Service) searchVectors(ctx context.Context, query string, f Filter, kno
 	}
 	vs, err := s.embed(ctx, s.budgets.Query, []string{query})
 	if err != nil {
-		return nil, []string{DegradedEmbeddings}, nil
+		return nil, []string{DegradedEmbeddings}, nil //nolint:nilerr // a failing embedder falls back to text search, and embed has logged it
 	}
 	hits, err := s.index.Search(ctx, f.OrgID, f.Scopes, vs[0], searchCandidates)
 	if err != nil {

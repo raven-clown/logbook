@@ -46,7 +46,7 @@ func newHandler(d deps) http.Handler {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		body := map[string]string{"status": "ready", "database": "ok", "transponder": "not configured"}
+		body := map[string]string{"status": "ready", "database": "ok", "embedder": d.svc.EmbedderState(), "extractor": d.svc.ExtractorState()}
 		status := http.StatusOK
 		if p, ok := d.store.(pinger); ok {
 			if err := p.Ping(r.Context()); err != nil {
@@ -130,6 +130,9 @@ func (a *app) serve(args []string) error {
 		return err
 	}
 	defer func() { _ = shutdownTracing(context.Background()) }()
+	wctx, stopWorkers := context.WithCancel(ctx)
+	waitWorkers := startWorkers(wctx, s)
+	defer func() { stopWorkers(); waitWorkers() }()
 
 	addr := s.cfg.ListenAddr
 	if *listen != "" {

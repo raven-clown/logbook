@@ -154,7 +154,7 @@ func TestServeRoutes(t *testing.T) {
 	if res, body := s.get(t, "/healthz", ""); res.StatusCode != http.StatusOK || !strings.Contains(body, `"ok"`) {
 		t.Fatalf("healthz %d %s", res.StatusCode, body)
 	}
-	if res, body := s.get(t, "/readyz", ""); res.StatusCode != http.StatusOK || !strings.Contains(body, `"database":"ok"`) || !strings.Contains(body, `"transponder":"not configured"`) {
+	if res, body := s.get(t, "/readyz", ""); res.StatusCode != http.StatusOK || !strings.Contains(body, `"database":"ok"`) || !strings.Contains(body, `"embedder":"not configured"`) || !strings.Contains(body, `"extractor":"not configured"`) {
 		t.Fatalf("readyz %d %s", res.StatusCode, body)
 	}
 

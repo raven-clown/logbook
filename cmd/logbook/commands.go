@@ -29,6 +29,9 @@ func (a *app) mcp(args []string) error {
 	defer func() { _ = s.store.Close() }()
 	ctx, stop := signal.NotifyContext(a.ctx, os.Interrupt)
 	defer stop()
+	wctx, stopWorkers := context.WithCancel(ctx)
+	waitWorkers := startWorkers(wctx, s)
+	defer func() { stopWorkers(); waitWorkers() }()
 	srv := mcpserver.New(s.svc, func(ctx context.Context) memory.Principal {
 		p := s.principal(memory.ChannelMCP)
 		p.Client = mcpserver.SessionClient(ctx)
