@@ -369,6 +369,36 @@ func TestBackfillStopsWhenTheEmbedderIsDown(t *testing.T) {
 	}
 }
 
+func TestBackfillStopsWhenTheEmbedderGoesDownMidPass(t *testing.T) {
+	m := &models{}
+	f := newModelFixture(t, m)
+	m.emb.SetErr(errors.New("down"))
+	for i := range 6 {
+		f.remember(t, alice, memory.RememberRequest{Content: fmt.Sprintf("note %d", i)})
+	}
+	m.emb.SetErr(nil)
+	m.emb.OnEmbed = func([]string) { m.emb.SetErr(errors.New("down again")) }
+	before := m.emb.Calls()
+	n, err := f.svc.Backfill(background, memory.DefaultOrg, 2)
+	m.emb.OnEmbed = nil
+	if n != 2 || err == nil {
+		t.Fatalf("Backfill = %d, %v, want the first batch and an error", n, err)
+	}
+	if calls := m.emb.Calls() - before; calls != 6 {
+		t.Fatalf("embedder called %d times, want one good batch, then two failed batches and three single tries", calls)
+	}
+	m.emb.SetErr(nil)
+	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 2); err != nil || n != 1 {
+		t.Fatalf("the next pass = %d, %v, want it to resume after the stop and embed the last memory", n, err)
+	}
+	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 2); err != nil || n != 3 {
+		t.Fatalf("the pass after = %d, %v, want the three that failed", n, err)
+	}
+	if f.vectorCount(t) != 6 {
+		t.Fatalf("vectors = %d", f.vectorCount(t))
+	}
+}
+
 func TestRefreshVectorsSeesOtherProcesses(t *testing.T) {
 	m := &models{emb: &testutil.BagOfWords{Synonyms: map[string]string{"database": "postgres"}}}
 	f := newModelFixture(t, m)

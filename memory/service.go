@@ -73,7 +73,7 @@ func NewService(s Store, o Options) *Service {
 		store: s, now: o.Now, newID: o.NewID, rules: o.Rules, periods: o.ReviewPeriods, weights: o.Weights,
 		policy: o.VerifyPolicy, minStatus: o.MinStatus,
 		embedder: o.Embedder, index: o.Index, extractor: o.Extractor, budgets: o.Budgets.withDefaults(),
-		vectorState: vectorState{started: time.Now(), refreshed: map[string]time.Time{}},
+		vectorState: vectorState{started: time.Now(), refreshed: map[string]time.Time{}, backfillFrom: map[string]string{}},
 	}
 	if svc.now == nil {
 		svc.now = time.Now

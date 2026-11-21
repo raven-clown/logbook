@@ -2,6 +2,7 @@ package oai_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,8 +34,8 @@ func TestPostErrors(t *testing.T) {
 	}{
 		{"error code", `{"error":{"message":"slow down","code":"rate_limit_exceeded"}}`, "429 (rate_limit_exceeded)", 429},
 		{"error type", `{"error":{"message":"x","type":"server_error","code":null}}`, "500 (server_error)", 500},
-		{"plain body", `upstream down`, "502 (no error code)", 502},
-		{"empty body", ``, "503 (no error code)", 503},
+		{"plain body", `upstream down`, "502 (no known error code)", 502},
+		{"empty body", ``, "503 (no known error code)", 503},
 		{"not json", `nope`, "not valid JSON", 200},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,16 +54,22 @@ func TestPostErrors(t *testing.T) {
 }
 
 func TestPostKeepsEchoedTextOutOfErrors(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":{"message":"bad input: ` + strings.ReplaceAll(string(b), `"`, `'`) + `","code":"the vpn password is hunter2"}}`))
-	}))
-	t.Cleanup(srv.Close)
-	var out any
-	err := oai.Endpoint{BaseURL: srv.URL}.Post(context.Background(), "/x", map[string]string{"input": "the vpn password is hunter2"}, &out)
-	if err == nil || strings.Contains(err.Error(), "hunter2") || !strings.Contains(err.Error(), "400 (no error code)") {
-		t.Fatalf("err = %v", err)
+	for _, field := range []string{"message", "code", "type"} {
+		t.Run(field, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var in map[string]string
+				_ = json.NewDecoder(r.Body).Decode(&in)
+				b, _ := json.Marshal(map[string]any{"error": map[string]string{field: in["input"]}})
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write(b)
+			}))
+			t.Cleanup(srv.Close)
+			var out any
+			err := oai.Endpoint{BaseURL: srv.URL}.Post(context.Background(), "/x", map[string]string{"input": "vpn_password_hunter2"}, &out)
+			if err == nil || strings.Contains(err.Error(), "hunter2") || !strings.Contains(err.Error(), "400 (no known error code)") {
+				t.Fatalf("err = %v", err)
+			}
+		})
 	}
 }
 
@@ -75,11 +82,13 @@ func TestPostFollowsNoRedirect(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	client := srv.Client()
-	client.CheckRedirect = oai.DefaultClient.CheckRedirect
 	var out any
 	err := oai.Endpoint{BaseURL: srv.URL, APIKey: "sk-secret", Client: client}.Post(context.Background(), "/x", 1, &out)
 	if err == nil || !strings.Contains(err.Error(), "307") || got != "" {
 		t.Fatalf("err = %v, the http target saw Authorization %q", err, got)
+	}
+	if client.CheckRedirect != nil {
+		t.Fatal("Post changed the caller's client")
 	}
 }
 

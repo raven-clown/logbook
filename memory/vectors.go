@@ -18,6 +18,10 @@ type vectorState struct {
 	started   time.Time
 	refreshMu sync.Mutex
 	refreshed map[string]time.Time
+	// backfillFrom is where the next backfill pass starts after one that
+	// stopped early, so memories the model rejects do not block the rest.
+	backfillMu   sync.Mutex
+	backfillFrom map[string]string
 }
 
 // Embedder turns texts into vectors. embed.Embedder has the same methods.
@@ -192,23 +196,27 @@ func (s *Service) forgetVector(ctx context.Context, m *Memory) {
 	}
 }
 
-// maxBackfillMisses ends a backfill pass when this many memories in a row fail
-// before any succeeds, since the embedder is then most likely down.
+// maxBackfillMisses ends a backfill pass when this many memories in a row
+// fail, since the embedder is then most likely down.
 const maxBackfillMisses = 3
 
 // Backfill embeds up to batch memories at a time that have no vector for the
 // current model, and returns how many it embedded. When a batch fails, its
 // memories are tried one by one, so one memory the model always rejects does
-// not hold up the ones after it. The error reports the memories that failed.
+// not hold up the ones after it. A pass that stops early is picked up after
+// the point it stopped. The error reports the memories that failed.
 func (s *Service) Backfill(ctx context.Context, orgID string, batch int) (int, error) {
 	if !s.vectorsOn() || batch <= 0 {
 		return 0, nil
 	}
+	s.backfillMu.Lock()
+	defer s.backfillMu.Unlock()
 	es := s.store.(EmbeddingStore)
 	model := s.embedder.Model()
 	total, failed, misses := 0, 0, 0
 	var lastErr error
-	after := ""
+	after := s.backfillFrom[orgID]
+	delete(s.backfillFrom, orgID)
 	for {
 		missing, err := es.MissingEmbeddings(ctx, orgID, model, after, batch)
 		if err != nil {
@@ -231,8 +239,9 @@ func (s *Service) Backfill(ctx context.Context, orgID string, batch int) (int, e
 				one, oneErr := s.embed(ctx, s.budgets.Embed, []string{m.Content})
 				if oneErr != nil {
 					failed, misses, lastErr = failed+1, misses+1, oneErr
-					if total == 0 && misses >= maxBackfillMisses {
-						return 0, fmt.Errorf("embedding %d memories failed: %w", failed, lastErr)
+					if misses >= maxBackfillMisses {
+						s.backfillFrom[orgID] = m.ID
+						return total, fmt.Errorf("embedding %d memories failed, stopping this pass: %w", failed, lastErr)
 					}
 					continue
 				}
@@ -305,6 +314,9 @@ func (s *Service) Reindex(ctx context.Context, orgID string, all bool, batch int
 	if dropped, err = s.store.(EmbeddingStore).DropEmbeddings(ctx, orgID, keep); err != nil {
 		return 0, 0, err
 	}
+	s.backfillMu.Lock()
+	delete(s.backfillFrom, orgID)
+	s.backfillMu.Unlock()
 	embedded, err = s.Backfill(ctx, orgID, batch)
 	return dropped, embedded, err
 }

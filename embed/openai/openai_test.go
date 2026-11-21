@@ -97,7 +97,7 @@ func TestEmbedErrors(t *testing.T) {
 		status             int
 	}{
 		{"server error", `{"error":{"message":"model not loaded","code":"model_not_found"}}`, "500 (model_not_found)", 500},
-		{"plain error", `upstream down`, "502 (no error code)", 502},
+		{"plain error", `upstream down`, "502 (no known error code)", 502},
 		{"too few", `{"data":[{"index":0,"embedding":[1]}]}`, "got 1", 200},
 		{"repeated index", `{"data":[{"index":0,"embedding":[1]},{"index":0,"embedding":[1]}]}`, "index 0", 200},
 		{"empty vector", `{"data":[{"index":0,"embedding":[]},{"index":1,"embedding":[1]}]}`, "index 0", 200},

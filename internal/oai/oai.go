@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -23,10 +22,9 @@ const MaxBody = 16 << 20
 // DefaultClient is used when a config names no HTTP client. Callers set tighter
 // budgets through the context. It follows no redirects, so Authorization is
 // never carried to another URL, such as from https down to http.
-var DefaultClient = &http.Client{
-	Timeout:       60 * time.Second,
-	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-}
+var DefaultClient = &http.Client{Timeout: 60 * time.Second, CheckRedirect: noRedirect}
+
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // Endpoint is one OpenAI-compatible base URL and how to sign in to it.
 type Endpoint struct {
@@ -52,9 +50,11 @@ func (e Endpoint) Post(ctx context.Context, path string, body, out any) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	outbound.Apply(ctx, req.Header, e.APIKey, e.ForwardToken)
-	client := e.Client
-	if client == nil {
-		client = DefaultClient
+	client := DefaultClient
+	if e.Client != nil {
+		c := *e.Client
+		c.CheckRedirect = noRedirect
+		client = &c
 	}
 	resp, err := client.Do(req) // #nosec G704 -- the URL comes from the operator's config
 	if err != nil {
@@ -77,26 +77,31 @@ func (e Endpoint) Post(ctx context.Context, path string, body, out any) error {
 	return nil
 }
 
-var codeRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+// knownCodes are the OpenAI-style error codes and types an error may name.
+// Anything else stays out, since an endpoint can put echoed input in any field.
+var knownCodes = map[string]bool{
+	"rate_limit_exceeded": true, "insufficient_quota": true, "invalid_api_key": true, "model_not_found": true,
+	"context_length_exceeded": true, "invalid_request_error": true, "authentication_error": true,
+	"permission_error": true, "not_found_error": true, "rate_limit_error": true, "server_error": true,
+	"api_error": true, "overloaded_error": true, "timeout": true,
+}
 
-// errorCode returns the OpenAI-style error code or type, such as
-// rate_limit_exceeded, when it is a short identifier.
+// errorCode returns the endpoint's error code or type when it is a known one.
 func errorCode(data []byte) string {
 	var e struct {
 		Error struct {
-			Code any    `json:"code"`
-			Type string `json:"type"`
+			Code any `json:"code"`
+			Type any `json:"type"`
 		} `json:"error"`
 	}
 	if json.Unmarshal(data, &e) == nil {
-		if c, ok := e.Error.Code.(string); ok && codeRe.MatchString(c) {
-			return c
-		}
-		if codeRe.MatchString(e.Error.Type) {
-			return e.Error.Type
+		for _, v := range []any{e.Error.Code, e.Error.Type} {
+			if s, ok := v.(string); ok && knownCodes[s] {
+				return s
+			}
 		}
 	}
-	return "no error code"
+	return "no known error code"
 }
 
 // ErrShape is wrapped by errors about an answer that has the wrong shape.
