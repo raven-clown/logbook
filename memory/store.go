@@ -53,8 +53,9 @@ type EmbeddingStore interface {
 	// forgotten, or only those stored at or after since when it is set.
 	Embeddings(ctx context.Context, orgID, model string, since time.Time, fn func(id, scope string, v []float32) error) error
 	// MissingEmbeddings returns up to limit memories that are not forgotten and
-	// have no vector for model, oldest first.
-	MissingEmbeddings(ctx context.Context, orgID, model string, limit int) ([]*Memory, error)
+	// have no vector for model, in id order (oldest first for ULIDs), starting
+	// after afterID when it is set.
+	MissingEmbeddings(ctx context.Context, orgID, model, afterID string, limit int) ([]*Memory, error)
 	// DropEmbeddings deletes every vector whose model is not keep, or every
 	// vector when keep is empty, and returns how many it deleted.
 	DropEmbeddings(ctx context.Context, orgID, keep string) (int, error)

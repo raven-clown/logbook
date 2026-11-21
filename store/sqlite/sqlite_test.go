@@ -70,7 +70,7 @@ func TestUpgradeFromV011(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	missing, err := s.MissingEmbeddings(ctx, memory.DefaultOrg, "m1", 10)
+	missing, err := s.MissingEmbeddings(ctx, memory.DefaultOrg, "m1", "", 10)
 	if err != nil || len(missing) != 1 || missing[0].Content != "from v0.1.1" {
 		t.Fatalf("after upgrade: %v, %v", missing, err)
 	}

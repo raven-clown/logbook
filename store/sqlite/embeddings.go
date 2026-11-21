@@ -53,12 +53,12 @@ func (s *Store) Embeddings(ctx context.Context, orgID, model string, since time.
 }
 
 // MissingEmbeddings returns up to limit memories that are not forgotten and
-// have no vector for model, oldest first.
-func (s *Store) MissingEmbeddings(ctx context.Context, orgID, model string, limit int) ([]*memory.Memory, error) {
+// have no vector for model, in id order, starting after afterID when it is set.
+func (s *Store) MissingEmbeddings(ctx context.Context, orgID, model, afterID string, limit int) ([]*memory.Memory, error) {
 	rows, err := s.q.QueryContext(ctx, "SELECT "+columns+` FROM memories m
-		WHERE m.org_id = ? AND m.status != 'forgotten' AND NOT EXISTS (
+		WHERE m.org_id = ? AND m.status != 'forgotten' AND m.id > ? AND NOT EXISTS (
 			SELECT 1 FROM embeddings e WHERE e.org_id = m.org_id AND e.memory_id = m.id AND e.model = ?)
-		ORDER BY m.created_at, m.id LIMIT ?`, orgID, model, limit)
+		ORDER BY m.id LIMIT ?`, orgID, afterID, model, limit)
 	if err != nil {
 		return nil, fmt.Errorf("finding memories without embeddings: %w", err)
 	}

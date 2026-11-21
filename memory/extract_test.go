@@ -2,6 +2,9 @@ package memory_test
 
 import (
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +47,56 @@ func TestRememberExtract(t *testing.T) {
 	}
 	if second := f.get(t, res.Memories[1].ID); second.Kind != memory.KindDecision || second.Subject != "" {
 		t.Fatalf("second = %+v", second)
+	}
+}
+
+func TestRememberExtractRules(t *testing.T) {
+	var twelve []memory.Candidate
+	for i := range 12 {
+		twelve = append(twelve, memory.Candidate{Content: fmt.Sprintf("fact number %d", i), Kind: memory.KindFact})
+	}
+	for _, tt := range []struct {
+		name  string
+		facts []memory.Candidate
+		check func(t *testing.T, f *fixture, res *memory.RememberResult)
+	}{
+		{"at most ten", twelve, func(t *testing.T, _ *fixture, res *memory.RememberResult) {
+			if len(res.Memories) != 10 {
+				t.Fatalf("stored %d, want 10", len(res.Memories))
+			}
+		}},
+		{"unknown kind becomes fact", []memory.Candidate{{Content: "alice likes tabs", Kind: "opinion"}}, func(t *testing.T, f *fixture, res *memory.RememberResult) {
+			if m := f.get(t, res.Memories[0].ID); m.Kind != memory.KindFact {
+				t.Fatalf("kind = %s", m.Kind)
+			}
+		}},
+		{"a bad subject or evidence is dropped", []memory.Candidate{{Content: "ci runs go 1.26", Kind: memory.KindFact, Subject: strings.Repeat("s", 201), Evidence: "we bumped it"}}, func(t *testing.T, f *fixture, res *memory.RememberResult) {
+			if m := f.get(t, res.Memories[0].ID); m.Subject != "" || m.Evidence != "" || m.Content != "ci runs go 1.26" {
+				t.Fatalf("stored = %+v", m)
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t, withExtractor(&testutil.FakeExtractor{Facts: tt.facts}))
+			res, err := f.svc.Remember(background, alice, memory.RememberRequest{Content: "raw text", Extract: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, f, res)
+		})
+	}
+}
+
+func TestRememberExtractMergesDegraded(t *testing.T) {
+	m := &models{ext: &testutil.FakeExtractor{Facts: []memory.Candidate{
+		{Content: "the cache lives on s3", Kind: memory.KindFact},
+		{Content: "the queue lives on sqs", Kind: memory.KindFact},
+	}}}
+	f := newModelFixture(t, m)
+	m.emb.SetErr(errors.New("down"))
+	res, err := f.svc.Remember(background, alice, memory.RememberRequest{Content: "raw text", Extract: true})
+	if err != nil || len(res.Memories) != 2 || !slices.Equal(res.Degraded, []string{memory.DegradedEmbeddings}) {
+		t.Fatalf("Remember = %+v, %v", res, err)
 	}
 }
 

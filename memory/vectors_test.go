@@ -3,7 +3,9 @@ package memory_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,7 +320,7 @@ func TestBackfillSkipsMemoryPurgedMeanwhile(t *testing.T) {
 		t.Fatalf("Backfill = %d, %v", n, err)
 	}
 	es := f.store.(memory.EmbeddingStore)
-	missing, _ := es.MissingEmbeddings(background, memory.DefaultOrg, "bag-of-words", 10)
+	missing, _ := es.MissingEmbeddings(background, memory.DefaultOrg, "bag-of-words", "", 10)
 	if len(missing) != 0 {
 		t.Fatalf("missing = %v", missing)
 	}
@@ -326,6 +328,44 @@ func TestBackfillSkipsMemoryPurgedMeanwhile(t *testing.T) {
 	_ = es.Embeddings(background, "default", "bag-of-words", time.Time{}, func(string, string, []float32) error { kept++; return nil })
 	if kept != 0 || f.get(t, id).Content != "" {
 		t.Fatal("a vector of purged content was stored")
+	}
+}
+
+func TestBackfillMovesPastAFailingMemory(t *testing.T) {
+	for _, batch := range []int{1, 10} {
+		t.Run(fmt.Sprintf("batch %d", batch), func(t *testing.T) {
+			m := &models{}
+			f := newModelFixture(t, m)
+			m.emb.SetErr(errors.New("down"))
+			f.remember(t, alice, memory.RememberRequest{Content: "a poison memory the model rejects"})
+			f.remember(t, alice, memory.RememberRequest{Content: "the cache lives on s3"})
+			f.remember(t, alice, memory.RememberRequest{Content: "the queue lives on sqs"})
+			m.emb.SetErr(nil)
+			m.emb.FailOn = func(text string) bool { return strings.Contains(text, "poison") }
+			n, err := f.svc.Backfill(background, memory.DefaultOrg, batch)
+			if n != 2 || err == nil || !strings.Contains(err.Error(), "1 memories") {
+				t.Fatalf("Backfill = %d, %v, want 2 and an error naming the one that failed", n, err)
+			}
+			if f.vectorCount(t) != 2 {
+				t.Fatalf("vectors = %d", f.vectorCount(t))
+			}
+		})
+	}
+}
+
+func TestBackfillStopsWhenTheEmbedderIsDown(t *testing.T) {
+	m := &models{}
+	f := newModelFixture(t, m)
+	m.emb.SetErr(errors.New("down"))
+	for i := range 10 {
+		f.remember(t, alice, memory.RememberRequest{Content: fmt.Sprintf("note %d", i)})
+	}
+	before := m.emb.Calls()
+	if n, err := f.svc.Backfill(background, memory.DefaultOrg, 64); n != 0 || err == nil {
+		t.Fatalf("Backfill = %d, %v", n, err)
+	}
+	if calls := m.emb.Calls() - before; calls != 1+3 {
+		t.Fatalf("the down embedder was called %d times, want the batch and three single tries", calls)
 	}
 }
 

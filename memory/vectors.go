@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"sync"
@@ -191,42 +192,70 @@ func (s *Service) forgetVector(ctx context.Context, m *Memory) {
 	}
 }
 
+// maxBackfillMisses ends a backfill pass when this many memories in a row fail
+// before any succeeds, since the embedder is then most likely down.
+const maxBackfillMisses = 3
+
 // Backfill embeds up to batch memories at a time that have no vector for the
-// current model, until none are left, and returns how many it embedded.
+// current model, and returns how many it embedded. When a batch fails, its
+// memories are tried one by one, so one memory the model always rejects does
+// not hold up the ones after it. The error reports the memories that failed.
 func (s *Service) Backfill(ctx context.Context, orgID string, batch int) (int, error) {
 	if !s.vectorsOn() || batch <= 0 {
 		return 0, nil
 	}
 	es := s.store.(EmbeddingStore)
 	model := s.embedder.Model()
-	total := 0
+	total, failed, misses := 0, 0, 0
+	var lastErr error
+	after := ""
 	for {
-		missing, err := es.MissingEmbeddings(ctx, orgID, model, batch)
-		if err != nil || len(missing) == 0 {
+		missing, err := es.MissingEmbeddings(ctx, orgID, model, after, batch)
+		if err != nil {
 			return total, err
 		}
+		if len(missing) == 0 {
+			break
+		}
+		after = missing[len(missing)-1].ID
 		texts := make([]string, len(missing))
 		for i, m := range missing {
 			texts[i] = m.Content
 		}
 		vs, err := s.embed(ctx, backfillBudget, texts)
-		if err != nil {
-			return total, err
-		}
 		for i, m := range missing {
-			stored, err := s.storeBackfilled(ctx, m, model, vs[i])
-			if err != nil {
-				return total, err
+			var v []float32
+			if err == nil {
+				v = vs[i]
+			} else {
+				one, oneErr := s.embed(ctx, s.budgets.Embed, []string{m.Content})
+				if oneErr != nil {
+					failed, misses, lastErr = failed+1, misses+1, oneErr
+					if total == 0 && misses >= maxBackfillMisses {
+						return 0, fmt.Errorf("embedding %d memories failed: %w", failed, lastErr)
+					}
+					continue
+				}
+				v = one[0]
+			}
+			misses = 0
+			stored, serr := s.storeBackfilled(ctx, m, model, v)
+			if serr != nil {
+				return total, serr
 			}
 			if stored {
-				s.upsertVector(ctx, m, vs[i])
+				s.upsertVector(ctx, m, v)
 				total++
 			}
 		}
 		if len(missing) < batch {
-			return total, nil
+			break
 		}
 	}
+	if failed > 0 {
+		return total, fmt.Errorf("embedding %d memories failed: %w", failed, lastErr)
+	}
+	return total, nil
 }
 
 // storeBackfilled writes a backfilled vector unless the memory was forgotten or

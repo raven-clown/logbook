@@ -111,7 +111,7 @@ func embeddingsSkipForgotten(t *testing.T, s memory.Store, e memory.EmbeddingSto
 	if got := vectors(t, e, memory.DefaultOrg, "m1"); len(got) != 1 || got["mem_old"].v == nil {
 		t.Fatalf("vectors = %+v, want only the superseded one", got)
 	}
-	missing, err := e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m2", 10)
+	missing, err := e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m2", "", 10)
 	if err != nil || !slices.Equal(ids(missing), []string{"mem_old"}) {
 		t.Fatalf("MissingEmbeddings = %v, %v", ids(missing), err)
 	}
@@ -125,13 +125,17 @@ func embeddingsMissing(t *testing.T, s memory.Store, e memory.EmbeddingStore) {
 	}
 	put(t, e, "mem_2", "m1", []float32{1})
 	put(t, e, "mem_1", "m0", []float32{1})
-	got, err := e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m1", 10)
+	got, err := e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m1", "", 10)
 	if err != nil || !slices.Equal(ids(got), []string{"mem_1", "mem_3"}) {
-		t.Fatalf("MissingEmbeddings = %v, %v, want oldest first", ids(got), err)
+		t.Fatalf("MissingEmbeddings = %v, %v, want id order", ids(got), err)
 	}
-	got, _ = e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m1", 1)
+	got, _ = e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m1", "", 1)
 	if !slices.Equal(ids(got), []string{"mem_1"}) {
 		t.Fatalf("limit 1 = %v", ids(got))
+	}
+	got, _ = e.MissingEmbeddings(context.Background(), memory.DefaultOrg, "m1", "mem_1", 10)
+	if !slices.Equal(ids(got), []string{"mem_3"}) {
+		t.Fatalf("after mem_1 = %v", ids(got))
 	}
 }
 
@@ -169,7 +173,7 @@ func embeddingsOrgIsolation(t *testing.T, s memory.Store, e memory.EmbeddingStor
 	if got := vectors(t, e, memory.DefaultOrg, "m1"); len(got) != 1 {
 		t.Fatalf("default org lost its vector: %+v", got)
 	}
-	missing, _ := e.MissingEmbeddings(context.Background(), "acme", "m1", 10)
+	missing, _ := e.MissingEmbeddings(context.Background(), "acme", "m1", "", 10)
 	if !slices.Equal(ids(missing), []string{"mem_x"}) {
 		t.Fatalf("acme missing = %v", ids(missing))
 	}

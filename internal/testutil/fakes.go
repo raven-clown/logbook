@@ -4,6 +4,7 @@ package testutil
 
 import (
 	"context"
+	"errors"
 	"hash/fnv"
 	"math"
 	"strings"
@@ -22,10 +23,12 @@ type BagOfWords struct {
 	Synonyms map[string]string
 	// OnEmbed runs inside every successful call, before it returns.
 	OnEmbed func(texts []string)
-	mu      sync.Mutex
-	err     error
-	block   bool
-	calls   int
+	// FailOn makes a call fail when it holds a text for which FailOn is true.
+	FailOn func(text string) bool
+	mu     sync.Mutex
+	err    error
+	block  bool
+	calls  int
 }
 
 // SetErr makes every call fail with err, or work again with nil.
@@ -52,6 +55,11 @@ func (b *BagOfWords) Embed(ctx context.Context, texts []string) ([][]float32, er
 	}
 	if err != nil {
 		return nil, err
+	}
+	for _, t := range texts {
+		if b.FailOn != nil && b.FailOn(t) {
+			return nil, errors.New("the model rejected the input")
+		}
 	}
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
