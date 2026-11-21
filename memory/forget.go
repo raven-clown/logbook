@@ -1,6 +1,9 @@
 package memory
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ForgetRequest hides a memory, or with Purge also erases its content.
 type ForgetRequest struct {
@@ -40,7 +43,7 @@ func (s *Service) Forget(ctx context.Context, p Principal, r ForgetRequest) (*Me
 		action := "forgotten"
 		if r.Purge {
 			action = "purged"
-			m.Content, m.Evidence, m.Tags, m.Refs, m.Purged = "", "", nil, nil, true
+			wipe(m)
 		}
 		m.UpdatedAt = now
 		if err := st.Update(ctx, m); err != nil {
@@ -57,6 +60,48 @@ func (s *Service) Forget(ctx context.Context, p Principal, r ForgetRequest) (*Me
 		return nil
 	})
 	return out, err
+}
+
+func wipe(m *Memory) {
+	m.Content, m.Evidence, m.Tags, m.Refs, m.Purged = "", "", nil, nil, true
+}
+
+const purgePage = 100
+
+// jobAuthor is the actor of changes made by background jobs.
+var jobAuthor = Author{Subject: "logbook", Channel: ChannelJob}
+
+// PurgeForgotten erases the content of memories forgotten more than retention
+// ago and returns how many it purged. Zero retention purges nothing.
+func (s *Service) PurgeForgotten(ctx context.Context, orgID string, retention time.Duration) (int, error) {
+	if retention <= 0 {
+		return 0, nil
+	}
+	f := Filter{OrgID: orgID, AllScopes: true, ForgottenBefore: s.clock().Add(-retention), Limit: purgePage}
+	total := 0
+	for {
+		page, _, err := s.store.List(ctx, f)
+		if err != nil {
+			return total, err
+		}
+		for _, m := range page {
+			err := s.store.Tx(ctx, func(st Store) error {
+				wipe(m)
+				m.UpdatedAt = s.clock()
+				if err := st.Update(ctx, m); err != nil {
+					return err
+				}
+				return st.AppendEvent(ctx, Event{OrgID: orgID, MemoryID: m.ID, Action: "purged", Actor: jobAuthor, At: s.clock()})
+			})
+			if err != nil {
+				return total, err
+			}
+			total++
+		}
+		if len(page) < purgePage {
+			return total, nil
+		}
+	}
 }
 
 // ForgetResult is what forget returns to callers: the id and the new status,

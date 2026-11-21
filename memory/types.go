@@ -67,6 +67,8 @@ const (
 	ChannelREST  Channel = "rest"
 	ChannelCLI   Channel = "cli"
 	ChannelAdmin Channel = "admin"
+	// ChannelJob marks changes made by logbook's own background jobs.
+	ChannelJob Channel = "job"
 )
 
 // EdgeType names the relation an edge records.

@@ -29,6 +29,7 @@ func Run(t *testing.T, open func(t *testing.T) memory.Store) {
 		{"FindByHash", findByHash},
 		{"FindBySubject", findBySubject},
 		{"ListFilters", listFilters},
+		{"ForgottenBefore", forgottenBefore},
 		{"ListPaging", listPaging},
 		{"ListReviewOrder", listReviewOrder},
 		{"SearchText", searchText},
@@ -316,6 +317,27 @@ func listFilters(t *testing.T, s memory.Store) {
 				t.Fatalf("List = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func forgottenBefore(t *testing.T, s memory.Store) {
+	day := 24 * time.Hour
+	old := newMemory("mem_old", "user:alice", "old")
+	old.Status, old.ForgottenAt = memory.StatusForgotten, base.Add(-31*day)
+	other := newMemory("mem_other", "team:platform", "other")
+	other.Status, other.ForgottenAt = memory.StatusForgotten, base.Add(-40*day)
+	recent := newMemory("mem_recent", "user:alice", "recent")
+	recent.Status, recent.ForgottenAt = memory.StatusForgotten, base.Add(-day)
+	purged := newMemory("mem_purged", "user:alice", "")
+	purged.Status, purged.ForgottenAt, purged.Purged = memory.StatusForgotten, base.Add(-60*day), true
+	active := newMemory("mem_active", "user:alice", "active")
+	insert(t, s, old, other, recent, purged, active)
+	f := memory.Filter{OrgID: memory.DefaultOrg, AllScopes: true, ForgottenBefore: base.Add(-30 * day)}
+	if got := list(t, s, f); !sameSet(got, []string{"mem_old", "mem_other"}) {
+		t.Fatalf("List = %v, want mem_old and mem_other", got)
+	}
+	if got := list(t, s, memory.Filter{OrgID: memory.DefaultOrg, AllScopes: true}); !sameSet(got, []string{"mem_active"}) {
+		t.Fatalf("AllScopes List = %v, want mem_active", got)
 	}
 }
 

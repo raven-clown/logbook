@@ -193,9 +193,11 @@ func (s *Store) List(ctx context.Context, f memory.Filter) ([]*memory.Memory, st
 func whereClause(f memory.Filter) (string, []any) {
 	clauses := []string{"m.org_id = ?"}
 	args := []any{f.OrgID}
-	if len(f.Scopes) == 0 {
+	switch {
+	case f.AllScopes:
+	case len(f.Scopes) == 0:
 		clauses = append(clauses, "0")
-	} else {
+	default:
 		clauses = append(clauses, "m.scope IN ("+placeholders(len(f.Scopes))+")")
 		for _, sc := range f.Scopes {
 			args = append(args, sc)
@@ -207,8 +209,12 @@ func whereClause(f memory.Filter) (string, []any) {
 		for _, st := range f.Statuses {
 			args = append(args, st)
 		}
-	case f.AsOf.IsZero():
+	case f.AsOf.IsZero() && f.ForgottenBefore.IsZero():
 		clauses = append(clauses, "m.status != 'forgotten'")
+	}
+	if !f.ForgottenBefore.IsZero() {
+		clauses = append(clauses, "m.status = 'forgotten' AND m.purged = 0 AND m.forgotten_at != '' AND m.forgotten_at <= ?")
+		args = append(args, formatTime(f.ForgottenBefore))
 	}
 	if len(f.Kinds) > 0 {
 		clauses = append(clauses, "m.kind IN ("+placeholders(len(f.Kinds))+")")

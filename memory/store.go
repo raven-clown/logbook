@@ -19,6 +19,10 @@ type Filter struct {
 	OrgID string
 	// Scopes are full scope strings. An empty list matches nothing.
 	Scopes []string
+	// AllScopes ignores Scopes and matches every scope. Only background jobs set it.
+	AllScopes bool
+	// ForgottenBefore keeps forgotten memories that are not purged yet and were forgotten at or before it.
+	ForgottenBefore time.Time
 	// Statuses empty means every status except forgotten.
 	Statuses []Status
 	Kinds    []Kind
