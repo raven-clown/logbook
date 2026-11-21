@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
 ### Added
 
 - Embeddings through any OpenAI-compatible `/v1/embeddings` endpoint (`embedder` settings). Recall fuses full-text and vector results, so it finds memories by meaning.
@@ -45,6 +47,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - JSON logs with request and trace IDs, Prometheus metrics, and OTLP trace export.
 - `GET /v1/memories/{id}` shows a memory with its links, verifications and history; `POST /v1/memories/{id}/links` links two memories.
 
-[Unreleased]: https://github.com/raven-clown/logbook/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/raven-clown/logbook/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/raven-clown/logbook/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/raven-clown/logbook/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/raven-clown/logbook/releases/tag/v0.1.0
