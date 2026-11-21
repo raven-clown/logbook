@@ -15,6 +15,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - Trust weights, review periods and `forget_retention` can be set in the config file and environment.
 - Forgotten memories are purged after `forget_retention`, 30 days by default.
 - The embedder and extractor forward `X-Request-ID` and the W3C trace context, and the caller's OIDC token when `forward_token` is set. logbook API keys are never forwarded.
+- Each release attaches `logbook` binaries for Linux, macOS and Windows on amd64 and arm64 with `checksums.txt`, and pushes a container image to `ghcr.io/raven-clown/logbook` that runs `logbook serve` on port 8420 with SQLite in `/data`.
 
 ### Changed
 
