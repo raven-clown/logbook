@@ -2,15 +2,19 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/raven-clown/logbook/admin"
 	"github.com/raven-clown/logbook/memory"
 	"github.com/raven-clown/logbook/store"
+	"github.com/raven-clown/logbook/store/migrate"
 	"github.com/raven-clown/logbook/store/sqlite"
 	"github.com/raven-clown/logbook/store/storetest"
 )
@@ -31,6 +35,45 @@ func openTemp(t *testing.T) memory.Store {
 
 func TestConformance(t *testing.T) {
 	storetest.Run(t, openTemp)
+}
+
+func TestEmbeddingConformance(t *testing.T) {
+	storetest.RunEmbeddings(t, openTemp)
+}
+
+func TestUpgradeFromV011(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "logbook.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.DirFS("migrations")
+	v011 := fstest.MapFS{}
+	for _, name := range []string{"0001_init.sql", "0002_access.sql"} {
+		b, err := fs.ReadFile(old, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v011[name] = &fstest.MapFile{Data: b}
+	}
+	if _, err := migrate.Run(ctx, db, v011); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO memories (org_id, id, scope, content, kind, status, source, created_at, updated_at, content_hash, version)
+		VALUES ('default', 'mem_1', 'user:alice', 'from v0.1.1', 'fact', 'unverified', 'direct', '2026-11-05T00:00:00.000000000Z', '2026-11-05T00:00:00.000000000Z', 'h', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	s, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	missing, err := s.MissingEmbeddings(ctx, memory.DefaultOrg, "m1", 10)
+	if err != nil || len(missing) != 1 || missing[0].Content != "from v0.1.1" {
+		t.Fatalf("after upgrade: %v, %v", missing, err)
+	}
 }
 
 func TestAdminConformance(t *testing.T) {

@@ -42,6 +42,23 @@ type Filter struct {
 	Cursor string
 }
 
+// EmbeddingStore keeps one vector per memory and model key. A Store that also
+// implements it, in and out of transactions, lets a Service use embeddings.
+type EmbeddingStore interface {
+	// PutEmbedding stores v for the memory and model, replacing an earlier one.
+	PutEmbedding(ctx context.Context, orgID, id, model string, v []float32) error
+	// DeleteEmbeddings removes every vector of the memory.
+	DeleteEmbeddings(ctx context.Context, orgID, id string) error
+	// Embeddings calls fn for every vector of model whose memory is not forgotten.
+	Embeddings(ctx context.Context, orgID, model string, fn func(id, scope string, v []float32) error) error
+	// MissingEmbeddings returns up to limit memories that are not forgotten and
+	// have no vector for model, oldest first.
+	MissingEmbeddings(ctx context.Context, orgID, model string, limit int) ([]*Memory, error)
+	// DropEmbeddings deletes every vector whose model is not keep, or every
+	// vector when keep is empty, and returns how many it deleted.
+	DropEmbeddings(ctx context.Context, orgID, keep string) (int, error)
+}
+
 // Store is the storage a Service runs on. Backends implement it and prove it
 // with the storetest suite.
 type Store interface {
