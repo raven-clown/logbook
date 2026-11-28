@@ -25,7 +25,7 @@ commands:
   list                             browse memories, --order review for the review queue
   verify <id> confirm|dispute      confirm or dispute a memory
   forget <id>                      hide a memory, --purge to erase it
-  import <format> <path>           import memories (formats: jsonl)
+  import <format> <path>           import memories (formats: jsonl), --dry-run to preview
   export                           write every memory you can read as JSONL
   key create|list|delete           manage API keys for the server
   binding add|list|delete          grant roles: binding add user:alice member team:platform

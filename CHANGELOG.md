@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- `logbook import --dry-run` reads a file and prints how many records would be imported and which lines would be skipped. It writes nothing, and it does not call `--server`.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added

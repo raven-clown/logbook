@@ -20,7 +20,12 @@ type ImportOutcome struct {
 	Err error
 }
 
-var errSkip = errors.New("skip")
+var (
+	errSkip = errors.New("skip")
+	// errPreview is returned from the import transaction so it rolls back
+	// after the outcomes are known.
+	errPreview = errors.New("preview")
+)
 
 // ImportBatch stores records in one transaction. A record keeps its ID when it
 // is free and gets a new one otherwise; supersede links, edges and verifications
@@ -33,6 +38,15 @@ var errSkip = errors.New("skip")
 // are kept as history without counting. Lower-trust states (disputed,
 // superseded, forgotten) survive.
 func (s *Service) ImportBatch(ctx context.Context, p Principal, scope string, recs []Record) ([]ImportOutcome, error) {
+	return s.importBatch(ctx, p, scope, recs, true)
+}
+
+// PreviewImport reports the outcome ImportBatch would have for recs and stores nothing.
+func (s *Service) PreviewImport(ctx context.Context, p Principal, scope string, recs []Record) ([]ImportOutcome, error) {
+	return s.importBatch(ctx, p, scope, recs, false)
+}
+
+func (s *Service) importBatch(ctx context.Context, p Principal, scope string, recs []Record, commit bool) ([]ImportOutcome, error) {
 	out := make([]ImportOutcome, len(recs))
 	err := s.store.Tx(ctx, func(st Store) error {
 		ids := map[string]string{}
@@ -59,8 +73,14 @@ func (s *Service) ImportBatch(ctx context.Context, p Principal, scope string, re
 				return err
 			}
 		}
+		if !commit {
+			return errPreview
+		}
 		return nil
 	})
+	if errors.Is(err, errPreview) {
+		return out, nil
+	}
 	if err != nil {
 		return nil, err
 	}

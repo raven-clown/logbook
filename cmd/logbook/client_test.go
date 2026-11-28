@@ -156,6 +156,36 @@ func TestServerErrorShown(t *testing.T) {
 	}
 }
 
+func TestImportDryRunDoesNotCallServer(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		hits++
+	}))
+	t.Cleanup(srv.Close)
+	c := newCLI(t)
+	path := filepath.Join(t.TempDir(), "memories.jsonl")
+	if err := os.WriteFile(path, []byte("{\"memory\":{\"content\":\"kept\"}}\n{not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, server := range []string{srv.URL, "http://127.0.0.1:1"} {
+		t.Run(server, func(t *testing.T) {
+			code, out, errOut := c.run("import", "jsonl", path, "--dry-run", "--server", server, "--token", "lbk_test")
+			if code != 0 {
+				t.Fatalf("exit %d: %s", code, errOut)
+			}
+			if !strings.Contains(out, "read 2") || !strings.Contains(out, "would import 1") || !strings.Contains(out, "skipped 1") {
+				t.Fatalf("report %q", out)
+			}
+		})
+	}
+	if hits != 0 {
+		t.Fatalf("--server dry run made %d requests", hits)
+	}
+	if list := c.ok("list"); strings.TrimSpace(list) != "" {
+		t.Fatalf("dry run wrote %q", list)
+	}
+}
+
 func TestServerExportChecksLines(t *testing.T) {
 	esc := string(rune(0x1b))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

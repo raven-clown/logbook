@@ -57,6 +57,43 @@ func TestImportBatchKeepsAndRemapsIDs(t *testing.T) {
 	}
 }
 
+func TestPreviewImportWritesNothing(t *testing.T) {
+	f := newFixture(t)
+	kept := f.remember(t, alice, memory.RememberRequest{Content: "already here"})
+	recs := []memory.Record{
+		record("", "", "already here"),
+		record("", "", "a new one"),
+		record("", "", ""),
+	}
+	out, err := f.svc.PreviewImport(background, alice, "", recs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, out[0].Err, memory.CodeConflict, "")
+	if out[1].Err != nil {
+		t.Fatalf("new record: %v", out[1].Err)
+	}
+	wantCode(t, out[2].Err, memory.CodeInvalidArgument, "content")
+	res, err := f.svc.List(background, alice, memory.ListRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 || res.Items[0].ID != kept.ID {
+		t.Fatalf("preview stored memories: %+v", res.Items)
+	}
+	out, err = f.svc.ImportBatch(background, alice, "", recs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].Err == nil || out[1].Err != nil || out[2].Err == nil {
+		t.Fatalf("real import = %+v", out)
+	}
+	res, err = f.svc.List(background, alice, memory.ListRequest{})
+	if err != nil || len(res.Items) != 2 {
+		t.Fatalf("after import: %+v, %v", res.Items, err)
+	}
+}
+
 func TestImportBatchOutcomes(t *testing.T) {
 	f := newFixture(t)
 	recs := []memory.Record{

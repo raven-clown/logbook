@@ -230,10 +230,17 @@ func (a *app) forget(args []string) error {
 
 func (a *app) importCmd(args []string) error {
 	fs, c := a.flags("import")
+	rf := a.addRemoteFlags(fs)
 	scope := fs.String("scope", "", "scope for records that have none")
-	pos, err := parse(fs, args, 2, "import <format> <path> [--scope scope]")
+	dryRun := fs.Bool("dry-run", false, "report what would be imported and write nothing")
+	pos, err := parse(fs, args, 2, "import <format> <path> [--scope scope] [--dry-run]")
 	if err != nil {
 		return err
+	}
+	// A real import has no server API. Dry-run accepts --server so a preview of
+	// a file meant for one does not need the server to be up, and never calls it.
+	if rf.server != "" && !*dryRun {
+		return fmt.Errorf("import does not support --server")
 	}
 	imp, err := importer.Get(pos[0])
 	if err != nil {
@@ -249,14 +256,29 @@ func (a *app) importCmd(args []string) error {
 		return err
 	}
 	defer func() { _ = s.store.Close() }()
-	report, err := importer.Run(a.ctx, s.svc, s.principal(memory.ChannelCLI), *scope, imp, f)
+	report, err := importer.Run(a.ctx, s.svc, s.principal(memory.ChannelCLI), *scope, imp, f, *dryRun)
 	if err != nil {
 		return err
 	}
-	if c.json {
+	return a.printImportReport(report, c.json, *dryRun)
+}
+
+func (a *app) printImportReport(report *importer.Report, asJSON, dryRun bool) error {
+	if asJSON {
+		if dryRun {
+			return a.printJSON(struct {
+				Read        int                  `json:"read"`
+				WouldImport int                  `json:"would_import"`
+				Skipped     []importer.LineError `json:"skipped,omitempty"`
+			}{report.Imported + len(report.Skipped), report.Imported, report.Skipped})
+		}
 		return a.printJSON(report)
 	}
-	a.println(fmt.Sprintf("imported %d, skipped %d", report.Imported, len(report.Skipped)))
+	summary := fmt.Sprintf("imported %d, skipped %d", report.Imported, len(report.Skipped))
+	if dryRun {
+		summary = fmt.Sprintf("read %d, would import %d, skipped %d", report.Imported+len(report.Skipped), report.Imported, len(report.Skipped))
+	}
+	a.println(summary)
 	for _, sk := range report.Skipped {
 		a.println(fmt.Sprintf("  line %d: %s", sk.Line, sk.Err))
 	}

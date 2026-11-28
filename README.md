@@ -88,6 +88,15 @@ The agent gets five tools:
 | `forget` | Hide a memory, or purge it |
 | `list_memories` | Browse, filter, or walk the review queue |
 
+## Import a file
+
+```shell
+logbook import jsonl memories.jsonl --dry-run
+logbook import jsonl memories.jsonl
+```
+
+`--dry-run` reads the whole file and prints how many records would be imported and which lines would be skipped, with each line's error. It writes nothing. `--server` is accepted and is not called, so the preview works while the server is down.
+
 ## Run it as a server
 
 `logbook serve` answers MCP over Streamable HTTP at `/mcp` and the same operations over REST under `/v1/`, on port 8420 by default. Every call needs `Authorization: Bearer <token>`: a logbook API key or an OIDC token from your identity provider.

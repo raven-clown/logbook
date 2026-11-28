@@ -65,7 +65,10 @@ type Report struct {
 }
 
 // Run reads r with imp and stores what it finds through svc.
-func Run(ctx context.Context, svc *memory.Service, p memory.Principal, scope string, imp Importer, r io.Reader) (*Report, error) {
+// When dryRun is true, Run reports what it would store and writes nothing.
+// The count and the skipped lines match a real import, including records the
+// store would reject.
+func Run(ctx context.Context, svc *memory.Service, p memory.Principal, scope string, imp Importer, r io.Reader, dryRun bool) (*Report, error) {
 	var recs []memory.Record
 	var lines []int
 	report := &Report{}
@@ -79,7 +82,12 @@ func Run(ctx context.Context, svc *memory.Service, p memory.Principal, scope str
 	if err != nil {
 		return nil, err
 	}
-	outcomes, err := svc.ImportBatch(ctx, p, scope, recs)
+	var outcomes []memory.ImportOutcome
+	if dryRun {
+		outcomes, err = svc.PreviewImport(ctx, p, scope, recs)
+	} else {
+		outcomes, err = svc.ImportBatch(ctx, p, scope, recs)
+	}
 	if err != nil {
 		return nil, err
 	}

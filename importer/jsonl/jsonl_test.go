@@ -61,7 +61,7 @@ func TestJSONLRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := importer.Run(ctx, dst, alice, "", imp, export(t, src))
+	report, err := importer.Run(ctx, dst, alice, "", imp, export(t, src), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestJSONLBadLines(t *testing.T) {
 		`{"memory":{"content":"another good one"}}`,
 	}, "\n")
 	imp, _ := importer.Get("jsonl")
-	report, err := importer.Run(context.Background(), newService(t), alice, "", imp, strings.NewReader(input))
+	report, err := importer.Run(context.Background(), newService(t), alice, "", imp, strings.NewReader(input), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestJSONLBadLines(t *testing.T) {
 func TestJSONLLongLine(t *testing.T) {
 	line := `{"memory":{"content":"` + strings.Repeat("a", 8000) + `","evidence":"` + strings.Repeat("e", 8000) + `"}}`
 	imp, _ := importer.Get("jsonl")
-	report, err := importer.Run(context.Background(), newService(t), alice, "", imp, strings.NewReader(line))
+	report, err := importer.Run(context.Background(), newService(t), alice, "", imp, strings.NewReader(line), false)
 	if err != nil || report.Imported != 1 {
 		t.Fatalf("long line: %+v, %v", report, err)
 	}

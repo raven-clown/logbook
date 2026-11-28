@@ -151,6 +151,57 @@ func TestRunErrors(t *testing.T) {
 	}
 }
 
+func TestRunImportDryRun(t *testing.T) {
+	c := newCLI(t)
+	path := filepath.Join(t.TempDir(), "memories.jsonl")
+	body := strings.Join([]string{
+		`{"memory":{"content":"a good one"}}`,
+		`{not json`,
+		`{"memory":{"content":""}}`,
+		`{"memory":{"content":"another good one"}}`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := c.run("import", "jsonl", path, "--dry-run")
+	if code != 0 {
+		t.Fatalf("dry run exited %d: %s", code, errOut)
+	}
+	for _, want := range []string{"read 4", "would import 2", "skipped 2", "line 2:", "line 3:"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dry run printed %q, missing %q", out, want)
+		}
+	}
+	if strings.Contains(out, "imported") {
+		t.Fatalf("dry run claimed records were imported: %q", out)
+	}
+	if list := c.ok("list"); strings.TrimSpace(list) != "" {
+		t.Fatalf("database after dry run: %q", list)
+	}
+	js := c.ok("import", "jsonl", path, "--dry-run", "--json")
+	if !strings.Contains(js, `"would_import": 2`) || strings.Contains(js, `"imported"`) {
+		t.Fatalf("json dry run: %s", js)
+	}
+	if list := c.ok("list"); strings.TrimSpace(list) != "" {
+		t.Fatalf("json dry run wrote memories: %q", list)
+	}
+	code, out, errOut = c.run("import", "jsonl", path)
+	if code != 0 || !strings.Contains(out, "imported 2") || strings.Contains(out, "would import") {
+		t.Fatalf("import exited %d, printed %q: %s", code, out, errOut)
+	}
+	list := c.ok("list")
+	if !strings.Contains(list, "a good one") || !strings.Contains(list, "another good one") {
+		t.Fatalf("list after import = %q", list)
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.jsonl")
+	dryCode, _, _ := c.run("import", "jsonl", missing, "--dry-run")
+	realCode, _, _ := c.run("import", "jsonl", missing)
+	if dryCode != realCode || dryCode == 0 {
+		t.Fatalf("missing file exit codes: dry-run %d, import %d", dryCode, realCode)
+	}
+}
+
 func TestRunExportImport(t *testing.T) {
 	src := newCLI(t)
 	src.ok("remember", "first memory")
